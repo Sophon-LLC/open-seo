@@ -29,6 +29,13 @@ Three actionable defects were reproduced against the baseline and corrected loca
 - Integration verification: 151 tests in 19 files passed, full TypeScript passed, touched-file type-aware lint/format checks and diff checks passed. The final export patch also passed an independent 8-test run. These are overlapping checks, not additive totals.
 - Core fixes are recorded in fork PR #1; container installation and live-data acceptance are recorded separately. The historical audit sections below retain the state and evidence at the time each baseline finding was investigated.
 
+### Provider setup UX follow-up
+
+- [Website integration issue #147](https://github.com/Sophon-LLC/heycue-site/issues/147) records a live-browser reproduction: the missing-DataForSEO modal returned after every route change and described the paid provider as a prerequisite for the whole application, despite an independently working Google report.
+- Removed the global modal and its route-triggered state/effects. The non-blocking notice limits the missing setup to provider-backed keyword, SERP and backlink features, explains separate Google authorization, and discloses potential provider charges. A failed configuration check remains unknown rather than falsely reporting a missing key.
+- Existing server-side provider gates, Google permissions, hosted authentication, database schema and paid-provider configuration are unchanged.
+- Final integration suite: 154 tests across 20 relevant files passed, plus full TypeScript, touched-file type-aware lint, formatting and diff checks. The three rendered-component tests passed independently. These component tests do not by themselves establish browser navigation behavior; that is a separate local deployment acceptance check.
+
 ### 1. P1 — GSC “Last 7/28 days” requests 8/29 inclusive days
 
 **Evidence:** `src/server/features/gsc/searchAnalytics.ts:88–96` subtracts 7 or 28 from the inclusive end date. Google's Search Analytics API includes both boundaries and interprets dates in Pacific Time. See the [official request contract](https://developers.google.com/webmaster-tools/v1/searchanalytics/query).
