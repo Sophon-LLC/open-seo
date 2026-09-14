@@ -19,12 +19,23 @@ describe("sumSearchTotals", () => {
     expect(totals.position).toBeCloseTo(8);
   });
 
-  it("returns zeros for no rows instead of NaN", () => {
+  it("keeps zero counts but undefined CTR and position without impressions", () => {
     expect(sumSearchTotals([])).toEqual({
       clicks: 0,
       impressions: 0,
+      ctr: null,
+      position: null,
+    });
+  });
+
+  it("keeps a legitimate zero CTR when impressions were reported", () => {
+    expect(
+      sumSearchTotals([{ clicks: 0, impressions: 50, ctr: 0, position: 7 }]),
+    ).toEqual({
+      clicks: 0,
+      impressions: 50,
       ctr: 0,
-      position: 0,
+      position: 7,
     });
   });
 });

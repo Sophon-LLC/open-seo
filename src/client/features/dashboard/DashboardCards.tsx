@@ -61,7 +61,11 @@ export function GscCard({
   return (
     <CardShell
       title="Search performance"
-      stamp="Google Search Console · last 28 days"
+      stamp={
+        report?.connected
+          ? `Google Search Console · ${report.range.startDate} to ${report.range.endDate} · PT (America/Los_Angeles) · finalized data only · compared with ${report.range.prevStartDate} to ${report.range.prevEndDate}`
+          : "Google Search Console"
+      }
       action={
         <Link
           to="/p/$projectId/search-performance"
@@ -83,33 +87,41 @@ export function GscCard({
           Couldn&rsquo;t load Search Console data. Try again shortly.
         </p>
       ) : report?.connected ? (
-        <div className="grid grid-cols-2 gap-3">
-          <Stat
-            label="Clicks"
-            value={formatCount(report.totals.clicks)}
-            sub={
-              <PercentDelta
-                current={report.totals.clicks}
-                previous={report.prevTotals.clicks}
-              />
-            }
-          />
-          <Stat
-            label="Impressions"
-            value={formatCount(report.totals.impressions)}
-            sub={
-              <PercentDelta
-                current={report.totals.impressions}
-                previous={report.prevTotals.impressions}
-              />
-            }
-          />
-          <Stat label="CTR" value={formatCtr(report.totals.ctr)} />
-          <Stat
-            label="Avg position"
-            value={formatPosition(report.totals.position)}
-          />
-        </div>
+        <>
+          {report.totals.impressions === 0 ? (
+            <p className="mb-3 text-sm text-base-content/60">
+              No impressions were returned for this finalized-data window. CTR
+              and average position are undefined.
+            </p>
+          ) : null}
+          <div className="grid grid-cols-2 gap-3">
+            <Stat
+              label="Clicks"
+              value={formatCount(report.totals.clicks)}
+              sub={
+                <PercentDelta
+                  current={report.totals.clicks}
+                  previous={report.prevTotals.clicks}
+                />
+              }
+            />
+            <Stat
+              label="Impressions"
+              value={formatCount(report.totals.impressions)}
+              sub={
+                <PercentDelta
+                  current={report.totals.impressions}
+                  previous={report.prevTotals.impressions}
+                />
+              }
+            />
+            <Stat label="CTR" value={formatCtr(report.totals.ctr)} />
+            <Stat
+              label="Avg position"
+              value={formatPosition(report.totals.position)}
+            />
+          </div>
+        </>
       ) : null}
     </CardShell>
   );
@@ -161,12 +173,21 @@ export function AuditHealthCard({
         </Link>
       }
     >
-      {audit.topIssues.length === 0 ? (
+      {audit.status !== "completed" || audit.pagesCrawled === 0 ? (
+        <p className="mb-3 text-sm text-base-content/70">
+          {audit.status === "failed"
+            ? "The last crawl failed. Results may be incomplete; rerun the audit before assessing site health."
+            : audit.status === "running"
+              ? "Crawl in progress. Results are incomplete until it finishes."
+              : "No pages were crawled. Site health could not be assessed."}
+        </p>
+      ) : audit.topIssues.length === 0 ? (
         <div className="flex items-center gap-2 text-sm text-base-content/70">
           <Check className="size-4 text-success" />
-          No issues found — your site looks healthy.
+          No issues found in the {audit.pagesCrawled} pages crawled.
         </div>
-      ) : (
+      ) : null}
+      {audit.topIssues.length > 0 ? (
         <ul className="space-y-2">
           {audit.topIssues.map((issue) => (
             <li
@@ -199,7 +220,7 @@ export function AuditHealthCard({
             </li>
           ) : null}
         </ul>
-      )}
+      ) : null}
     </CardShell>
   );
 }
@@ -208,10 +229,12 @@ export function BacklinkPulseCard({
   projectId,
   backlinks,
   refreshing,
+  failed = false,
 }: {
   projectId: string;
   backlinks: DashboardBacklinkSummary | null;
   refreshing: boolean;
+  failed?: boolean;
 }) {
   if (!backlinks && refreshing) {
     return (
@@ -228,8 +251,13 @@ export function BacklinkPulseCard({
   if (!backlinks) {
     return (
       <CardShell title="Backlink pulse">
-        <p className="text-sm text-base-content/60">
-          We&rsquo;ll snapshot who links to your domain — nothing to set up.
+        <p
+          className="text-sm text-base-content/60"
+          role={failed ? "alert" : undefined}
+        >
+          {failed
+            ? "Could not load a backlink snapshot. Check DataForSEO configuration, account balance and provider availability before retrying. No backlink totals are available."
+            : "No backlink snapshot is available yet. Snapshots require a configured DataForSEO account and may incur provider charges."}
         </p>
       </CardShell>
     );
@@ -252,6 +280,12 @@ export function BacklinkPulseCard({
         </Link>
       }
     >
+      {failed || backlinks.stale ? (
+        <p role="alert" className="mb-4 text-sm text-warning">
+          {failed ? "Refresh failed." : "This snapshot is stale."} Showing
+          previously captured data, not current totals.
+        </p>
+      ) : null}
       <div className="grid grid-cols-2 gap-3">
         <Stat
           label="Ref. domains"

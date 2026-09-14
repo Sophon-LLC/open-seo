@@ -35,11 +35,15 @@ import {
   type SearchPerformanceTableDimension,
 } from "@/types/schemas/search-performance";
 import { saveKeywords } from "@/serverFunctions/keywords";
+import type { exportSearchPerformanceTable } from "@/serverFunctions/searchPerformance";
 
 export type Tab = "striking" | "queries" | "pages";
 export type ExportTarget = "csv" | "sheets";
 
 type ExportTable = { filename: string; headers: string[]; rows: CsvValue[][] };
+type ExportCoverage = Awaited<
+  ReturnType<typeof exportSearchPerformanceTable>
+>["coverage"];
 
 function strikingExportTable(report: Report): ExportTable {
   const stamp = `${report.range.startDate}-to-${report.range.endDate}`;
@@ -60,6 +64,8 @@ function dimensionExportTable(
   dimension: SearchPerformanceTableDimension,
   rows: SearchPerformanceTableRow[],
   stamp: string,
+  window: string,
+  coverageNote: string,
 ): ExportTable {
   const isPage = dimension === "page";
   return {
@@ -70,6 +76,8 @@ function dimensionExportTable(
       "Impressions",
       "CTR",
       "Position",
+      "Reporting window",
+      "Export coverage",
     ],
     rows: rows.map((row) => [
       row.key,
@@ -77,6 +85,8 @@ function dimensionExportTable(
       row.impressions,
       row.ctr,
       row.position,
+      window,
+      coverageNote,
     ]),
   };
 }
@@ -101,16 +111,25 @@ export function exportStriking(report: Report, target: ExportTarget): void {
   runExport(strikingExportTable(report), target);
 }
 
-/** Export the full queries/pages dataset (fetched separately, not the visible
- *  page) so pagination never truncates a download. */
+/** Keep the bounded query's actual dates and coverage with the exported rows,
+ *  including when they leave the application via CSV or Sheets. */
 export function exportDimensionRows(
   dimension: SearchPerformanceTableDimension,
   rows: SearchPerformanceTableRow[],
-  range: Report["range"],
+  range: Pick<Report["range"], "startDate" | "endDate">,
   target: ExportTarget,
+  coverage: ExportCoverage,
 ): void {
   const stamp = `${range.startDate}-to-${range.endDate}`;
-  runExport(dimensionExportTable(dimension, rows, stamp), target);
+  const window = `${range.startDate} to ${range.endDate} · PT (America/Los_Angeles) · finalized data only`;
+  const coverageNote = coverage.mayBeTruncated
+    ? `Limited to first ${coverage.rowLimit.toLocaleString("en-US")} API rows; more rows may exist. Google may omit anonymized queries and other rows.`
+    : `${coverage.returnedRows.toLocaleString("en-US")} rows returned; application limit not reached. Google may omit anonymized queries and other rows.`;
+  if (coverage.mayBeTruncated) toast.warning(coverageNote);
+  runExport(
+    dimensionExportTable(dimension, rows, stamp, window, coverageNote),
+    target,
+  );
 }
 
 export function TabButton({
@@ -137,16 +156,17 @@ export function TabButton({
 
 type Delta = { text: string; improved: boolean } | null;
 
-function percentDelta(current: number, previous: number): Delta {
-  if (previous <= 0) return null;
+function percentDelta(current: number | null, previous: number | null): Delta {
+  if (current === null || previous === null || previous <= 0) return null;
   const change = (current - previous) / previous;
   const pct = (change * 100).toFixed(1);
   return { text: `${change >= 0 ? "+" : ""}${pct}%`, improved: change >= 0 };
 }
 
 /** Position falls as rankings improve, so the delta is inverted. */
-function positionDelta(current: number, previous: number): Delta {
-  if (previous <= 0 || current <= 0) return null;
+function positionDelta(current: number | null, previous: number | null): Delta {
+  if (current === null || previous === null || previous <= 0 || current <= 0)
+    return null;
   const change = previous - current;
   return {
     text: `${change >= 0 ? "+" : ""}${change.toFixed(1)}`,
@@ -158,32 +178,45 @@ export function TotalsCards({ report }: { report: Report }) {
   const { totals, prevTotals, range } = report;
   const deltaTitle = `vs ${range.prevStartDate} to ${range.prevEndDate}`;
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <TotalCard
-        label="Clicks"
-        value={formatCount(totals.clicks)}
-        delta={percentDelta(totals.clicks, prevTotals.clicks)}
-        deltaTitle={deltaTitle}
-      />
-      <TotalCard
-        label="Impressions"
-        value={formatCount(totals.impressions)}
-        delta={percentDelta(totals.impressions, prevTotals.impressions)}
-        deltaTitle={deltaTitle}
-      />
-      <TotalCard
-        label="CTR"
-        value={formatCtr(totals.ctr)}
-        delta={percentDelta(totals.ctr, prevTotals.ctr)}
-        deltaTitle={deltaTitle}
-      />
-      <TotalCard
-        label="Avg position"
-        value={formatPosition(totals.position)}
-        delta={positionDelta(totals.position, prevTotals.position)}
-        deltaTitle={deltaTitle}
-      />
-    </div>
+    <section className="space-y-3" aria-label="Search performance totals">
+      <p className="text-sm text-base-content/60">
+        {range.startDate} to {range.endDate} · PT (America/Los_Angeles) ·
+        finalized data only. Compared with {range.prevStartDate} to{" "}
+        {range.prevEndDate}.
+      </p>
+      {totals.impressions === 0 ? (
+        <p className="text-sm text-base-content/60">
+          No impressions were returned for this finalized-data window. CTR and
+          average position are undefined.
+        </p>
+      ) : null}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <TotalCard
+          label="Clicks"
+          value={formatCount(totals.clicks)}
+          delta={percentDelta(totals.clicks, prevTotals.clicks)}
+          deltaTitle={deltaTitle}
+        />
+        <TotalCard
+          label="Impressions"
+          value={formatCount(totals.impressions)}
+          delta={percentDelta(totals.impressions, prevTotals.impressions)}
+          deltaTitle={deltaTitle}
+        />
+        <TotalCard
+          label="CTR"
+          value={formatCtr(totals.ctr)}
+          delta={percentDelta(totals.ctr, prevTotals.ctr)}
+          deltaTitle={deltaTitle}
+        />
+        <TotalCard
+          label="Avg position"
+          value={formatPosition(totals.position)}
+          delta={positionDelta(totals.position, prevTotals.position)}
+          deltaTitle={deltaTitle}
+        />
+      </div>
+    </section>
   );
 }
 

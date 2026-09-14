@@ -10,10 +10,10 @@ import type { GscSearchAnalyticsRow } from "@/server/lib/gscClient";
 type SearchPerformanceTotals = {
   clicks: number;
   impressions: number;
-  /** 0..1 (clicks / impressions). */
-  ctr: number;
-  /** Impression-weighted average position; 0 when there were no impressions. */
-  position: number;
+  /** 0..1 (clicks / impressions); undefined without impressions. */
+  ctr: number | null;
+  /** Impression-weighted average position; undefined without impressions. */
+  position: number | null;
 };
 
 type SearchPerformanceDimensionRow = {
@@ -52,8 +52,8 @@ export function sumSearchTotals(
   return {
     clicks,
     impressions,
-    ctr: impressions > 0 ? clicks / impressions : 0,
-    position: impressions > 0 ? weightedPosition / impressions : 0,
+    ctr: impressions > 0 ? clicks / impressions : null,
+    position: impressions > 0 ? weightedPosition / impressions : null,
   };
 }
 

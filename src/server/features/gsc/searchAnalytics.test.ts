@@ -4,9 +4,46 @@ import {
   resolveDateRange,
 } from "@/server/features/gsc/searchAnalytics";
 
-const TODAY = new Date("2026-05-28T00:00:00Z");
+const TODAY = new Date("2026-05-28T12:00:00Z");
 
 describe("resolveDateRange", () => {
+  it.each([
+    ["2026-09-14T00:30:00Z", "2026-09-10", "2026-09-04"],
+    ["2026-09-14T06:59:59Z", "2026-09-10", "2026-09-04"],
+    ["2026-09-14T07:00:00Z", "2026-09-11", "2026-09-05"],
+    ["2026-03-08T07:59:59Z", "2026-03-04", "2026-02-26"],
+    ["2026-03-08T08:00:00Z", "2026-03-05", "2026-02-27"],
+    ["2026-03-08T10:00:00Z", "2026-03-05", "2026-02-27"],
+    ["2026-03-09T07:00:00Z", "2026-03-06", "2026-02-28"],
+    ["2026-11-01T08:30:00Z", "2026-10-29", "2026-10-23"],
+    ["2026-11-01T09:30:00Z", "2026-10-29", "2026-10-23"],
+    ["2026-11-02T07:59:59Z", "2026-10-29", "2026-10-23"],
+    ["2026-11-02T08:00:00Z", "2026-10-30", "2026-10-24"],
+  ])(
+    "uses the PT calendar day at %s, including DST boundaries",
+    (instant, endDate, startDate) => {
+      expect(
+        resolveDateRange({ dateRange: "last_7_days" }, new Date(instant)),
+      ).toEqual({ startDate, endDate });
+    },
+  );
+
+  it("uses the PT calendar floor without shifting explicit requested dates", () => {
+    const instant = new Date("2026-09-14T00:30:00Z");
+    expect(
+      resolveDateRange(
+        { startDate: "2020-01-01", endDate: "2026-09-01" },
+        instant,
+      ),
+    ).toEqual({ startDate: "2025-05-13", endDate: "2026-09-01" });
+    expect(
+      resolveDateRange(
+        { startDate: "2026-08-01", endDate: "2026-09-01" },
+        instant,
+      ),
+    ).toEqual({ startDate: "2026-08-01", endDate: "2026-09-01" });
+  });
+
   it("ends convenience ranges 3 days back for GSC data lag", () => {
     const { endDate } = resolveDateRange({ dateRange: "last_28_days" }, TODAY);
     expect(endDate).toBe("2026-05-25");
@@ -65,7 +102,7 @@ describe("resolveDateRange", () => {
   it("subtracts calendar months without overflowing short months", () => {
     const { startDate, endDate } = resolveDateRange(
       { dateRange: "last_3_months" },
-      new Date("2026-06-03T00:00:00Z"),
+      new Date("2026-06-03T12:00:00Z"),
     );
     expect(startDate).toBe("2026-02-28");
     expect(endDate).toBe("2026-05-31");
@@ -74,7 +111,7 @@ describe("resolveDateRange", () => {
   it("clamps the 16-month floor to the last valid day of a short month", () => {
     const { startDate } = resolveDateRange(
       { dateRange: "last_16_months" },
-      new Date("2026-06-30T00:00:00Z"),
+      new Date("2026-06-30T12:00:00Z"),
     );
     expect(startDate).toBe("2025-02-28");
   });

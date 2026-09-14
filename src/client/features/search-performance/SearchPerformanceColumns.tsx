@@ -25,12 +25,12 @@ export function formatCount(value: number): string {
   return numberFormat.format(Math.round(value));
 }
 
-export function formatCtr(value: number): string {
-  return `${(value * 100).toFixed(1)}%`;
+export function formatCtr(value: number | null): string {
+  return value === null ? "—" : `${(value * 100).toFixed(1)}%`;
 }
 
-export function formatPosition(value: number): string {
-  return value.toFixed(1);
+export function formatPosition(value: number | null): string {
+  return value === null ? "—" : value.toFixed(1);
 }
 
 const rightAligned = {

@@ -182,7 +182,13 @@ export function SearchPerformancePage({ projectId }: { projectId: string }) {
       const data = await exportSearchPerformanceTable({
         data: { projectId, dimension, ...filterInput },
       });
-      exportDimensionRows(dimension, data.rows, report.range, target);
+      exportDimensionRows(
+        dimension,
+        data.rows,
+        data.range,
+        target,
+        data.coverage,
+      );
     } catch (error) {
       toast.error(getStandardErrorMessage(error, "Export failed"));
     }

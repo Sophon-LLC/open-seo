@@ -26,8 +26,8 @@ const STRIKING_DISTANCE_FETCH_LIMIT = 1000;
 // dimensions:["date"] returns one row per day; the longest range is ~92 days.
 const DAILY_ROW_LIMIT = 200;
 const COUNTRY_ROW_LIMIT = 25;
-// Export pulls the whole dimension in one shot, capped at GSC's per-call max
-// (GSC_MAX_ROW_LIMIT). Large stores get everything up to this ceiling.
+// One bounded request, not a promise of complete property coverage. Reaching
+// this application ceiling must be disclosed to CSV/Sheets consumers.
 const EXPORT_ROW_LIMIT = 1000;
 
 /** Build GSC filter groups shared by every call. Device applies everywhere;
@@ -82,6 +82,7 @@ export const getSearchPerformanceReport = createServerFn({ method: "POST" })
           dimensions: ["date"],
           filters,
           rowLimit: DAILY_ROW_LIMIT,
+          dataState: "final",
         }),
         GscService.getPerformance({
           projectId,
@@ -90,6 +91,7 @@ export const getSearchPerformanceReport = createServerFn({ method: "POST" })
           dimensions: ["date"],
           filters,
           rowLimit: DAILY_ROW_LIMIT,
+          dataState: "final",
         }),
         GscService.getPerformance({
           projectId,
@@ -98,6 +100,7 @@ export const getSearchPerformanceReport = createServerFn({ method: "POST" })
           dimensions: ["query", "page"],
           filters,
           rowLimit: STRIKING_DISTANCE_FETCH_LIMIT,
+          dataState: "final",
         }),
         GscService.getPerformance({
           projectId,
@@ -106,6 +109,7 @@ export const getSearchPerformanceReport = createServerFn({ method: "POST" })
           dimensions: ["country"],
           filters: deviceFilters,
           rowLimit: COUNTRY_ROW_LIMIT,
+          dataState: "final",
         }),
       ]);
 
@@ -155,6 +159,7 @@ export const getSearchPerformanceTable = createServerFn({ method: "POST" })
         // One extra row tells us whether a further page exists.
         rowLimit: data.pageSize + 1,
         startRow: offset,
+        dataState: "final",
       });
 
       const fetched = toDimensionRows(result.rows);
@@ -178,8 +183,8 @@ export const getSearchPerformanceTable = createServerFn({ method: "POST" })
   });
 
 /**
- * The full queries/pages dataset for CSV/Sheets export (capped at
- * EXPORT_ROW_LIMIT), rather than only the visible page.
+ * A bounded queries/pages export, rather than only the visible page. GSC
+ * provides top rows, not a guarantee of all queries or pages.
  */
 export const exportSearchPerformanceTable = createServerFn({ method: "POST" })
   .middleware(requireProjectContext)
@@ -197,10 +202,19 @@ export const exportSearchPerformanceTable = createServerFn({ method: "POST" })
       dimensions: [data.dimension],
       filters,
       rowLimit: EXPORT_ROW_LIMIT,
+      dataState: "final",
     });
 
+    const rows = toDimensionRows(result.rows);
     return {
       dimension: data.dimension,
-      rows: toDimensionRows(result.rows),
+      rows,
+      range: { startDate, endDate },
+      coverage: {
+        rowLimit: EXPORT_ROW_LIMIT,
+        returnedRows: rows.length,
+        // GSC supplies no total. At the ceiling we cannot know if more exist.
+        mayBeTruncated: result.rows.length >= EXPORT_ROW_LIMIT,
+      },
     };
   });
