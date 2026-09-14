@@ -12,13 +12,28 @@ describe("resolveDateRange", () => {
     expect(endDate).toBe("2026-05-25");
   });
 
-  it("computes a 28-day window from the lagged end", () => {
+  it("requests exactly 7 inclusive days", () => {
+    const range = resolveDateRange({ dateRange: "last_7_days" }, TODAY);
+    expect(range).toEqual({
+      startDate: "2026-05-19",
+      endDate: "2026-05-25",
+    });
+    expect(
+      (Date.parse(range.endDate) - Date.parse(range.startDate)) / 86_400_000 +
+        1,
+    ).toBe(7);
+  });
+
+  it("requests exactly 28 inclusive days from the lagged end", () => {
     const { startDate, endDate } = resolveDateRange(
       { dateRange: "last_28_days" },
       TODAY,
     );
-    expect(startDate).toBe("2026-04-27");
+    expect(startDate).toBe("2026-04-28");
     expect(endDate).toBe("2026-05-25");
+    expect((Date.parse(endDate) - Date.parse(startDate)) / 86_400_000 + 1).toBe(
+      28,
+    );
   });
 
   it("clamps the start to the 16-month floor", () => {
@@ -66,6 +81,81 @@ describe("resolveDateRange", () => {
 });
 
 describe("buildSearchAnalyticsRequest", () => {
+  it.each([
+    {
+      dateRange: "last_7_days" as const,
+      today: "2026-03-06T12:00:00Z",
+      startDate: "2026-02-25",
+      endDate: "2026-03-03",
+      days: 7,
+    },
+    {
+      dateRange: "last_28_days" as const,
+      today: "2026-03-06T12:00:00Z",
+      startDate: "2026-02-04",
+      endDate: "2026-03-03",
+      days: 28,
+    },
+    {
+      dateRange: "last_7_days" as const,
+      today: "2028-03-06T12:00:00Z",
+      startDate: "2028-02-26",
+      endDate: "2028-03-03",
+      days: 7,
+    },
+    {
+      dateRange: "last_28_days" as const,
+      today: "2028-03-06T12:00:00Z",
+      startDate: "2028-02-05",
+      endDate: "2028-03-03",
+      days: 28,
+    },
+    {
+      dateRange: "last_7_days" as const,
+      today: "2026-01-06T12:00:00Z",
+      startDate: "2025-12-28",
+      endDate: "2026-01-03",
+      days: 7,
+    },
+    {
+      dateRange: "last_28_days" as const,
+      today: "2026-01-06T12:00:00Z",
+      startDate: "2025-12-07",
+      endDate: "2026-01-03",
+      days: 28,
+    },
+  ])(
+    "preserves $days inclusive days across calendar boundaries at $today",
+    ({ dateRange, today, startDate, endDate, days }) => {
+      const request = buildSearchAnalyticsRequest(
+        { projectId: "p1", dateRange },
+        new Date(today),
+      );
+      expect(request).toMatchObject({ startDate, endDate });
+      expect(
+        (Date.parse(request.endDate) - Date.parse(request.startDate)) /
+          86_400_000 +
+          1,
+      ).toBe(days);
+    },
+  );
+
+  it("keeps explicit inclusive dates instead of expanding the convenience range", () => {
+    const request = buildSearchAnalyticsRequest(
+      {
+        projectId: "p1",
+        dateRange: "last_28_days",
+        startDate: "2026-05-01",
+        endDate: "2026-05-01",
+      },
+      TODAY,
+    );
+    expect(request).toMatchObject({
+      startDate: "2026-05-01",
+      endDate: "2026-05-01",
+    });
+  });
+
   it("wraps flat filters into a single AND dimensionFilterGroup", () => {
     const request = buildSearchAnalyticsRequest(
       {
