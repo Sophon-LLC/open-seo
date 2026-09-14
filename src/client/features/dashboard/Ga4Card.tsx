@@ -20,6 +20,47 @@ import {
   formatCtr,
 } from "@/client/features/search-performance/SearchPerformanceColumns";
 import { getGa4DashboardReport } from "@/serverFunctions/ga4";
+import type { Ga4DashboardReport } from "@/server/features/ga4/services/Ga4DashboardService";
+
+function qualityNotices(report: Ga4DashboardReport): string[] {
+  const notices = report.reportMetadata.reports.flatMap((metadata, index) => {
+    const period = ["Current period", "Previous period", "Daily trend"][index];
+    const details: string[] = [];
+    for (const sample of metadata.sampling) {
+      details.push(
+        `sampled data (samples read: ${sample.samplesReadCount}; sampling space: ${sample.samplingSpaceSize})`,
+      );
+    }
+    if (metadata.subjectToThresholding) {
+      details.push("thresholding may withhold data");
+    }
+    if (metadata.restrictedMetrics.length) {
+      details.push(
+        `restricted metrics: ${metadata.restrictedMetrics.map((metric) => metric.metricName).join(", ")}`,
+      );
+    }
+    if (metadata.dataLossFromOtherRow) {
+      details.push("data loss from the (other) row");
+    }
+    if (metadata.emptyReason) {
+      details.push(`GA4 empty reason: ${metadata.emptyReason}`);
+    }
+    if (metadata.hasLimitedData && !details.length) {
+      details.push("GA4 reports limited data");
+    }
+    return details.map((detail) => `${period}: ${detail}.`);
+  });
+  for (const warning of report.warnings) {
+    notices.push(
+      warning === "trend_truncated"
+        ? "Daily trend is truncated; not all rows were returned."
+        : warning === "end_date_clamped"
+          ? "The requested end date was limited to the last complete property day."
+          : `GA4 warning: ${warning}.`,
+    );
+  }
+  return notices;
+}
 
 function formatTrendDay(date: string): string {
   // Construct in local time: Date.parse("2026-08-01") is UTC midnight, which
@@ -38,8 +79,12 @@ function statValue(
   return value === null ? "—" : format(value);
 }
 
-function statDelta(current: number | null, previous: number | null) {
-  return current !== null && previous !== null ? (
+function statDelta(
+  current: number | null,
+  previous: number | null,
+  comparisonAvailable: boolean,
+) {
+  return comparisonAvailable && current !== null && previous !== null ? (
     <PercentDelta current={current} previous={previous} />
   ) : undefined;
 }
@@ -50,7 +95,7 @@ function SessionsTooltip({
   label,
 }: {
   active?: boolean;
-  payload?: Array<{ value: number }>;
+  payload?: Array<{ value: number | null }>;
   label?: string;
 }) {
   if (!active || !payload?.length) return null;
@@ -60,7 +105,9 @@ function SessionsTooltip({
         {label ? formatTrendDay(label) : ""}
       </p>
       <p className="text-sm font-medium tabular-nums">
-        {formatCount(payload[0].value)} sessions
+        {payload[0].value === null
+          ? "Session count unavailable"
+          : `${formatCount(payload[0].value)} sessions`}
       </p>
     </div>
   );
@@ -86,11 +133,22 @@ export function Ga4Card({
   }
 
   const report = reportQuery.data;
+  const notices = report?.connected ? qualityNotices(report) : [];
+  const comparisonAvailable = Boolean(
+    report?.connected &&
+    report.currentRowReturned &&
+    !report.reportMetadata.hasLimitedData &&
+    !notices.length,
+  );
 
   return (
     <CardShell
       title="Organic traffic"
-      stamp="Google Analytics · last 28 days"
+      stamp={
+        report?.connected
+          ? `Google Analytics · ${report.request.resolvedDateRange.startDate} – ${report.request.resolvedDateRange.endDate}`
+          : "Google Analytics"
+      }
       action={
         <Link
           to="/p/$projectId/settings"
@@ -116,44 +174,96 @@ export function Ga4Card({
           Couldn&rsquo;t load Google Analytics data. Try again shortly.
         </p>
       ) : report?.connected ? (
-        // Covers null (no report row) and 0: a zero-session period would
-        // otherwise render an all-zero flatline chart in an empty box.
-        !report.totals.sessions ? (
-          <p className="text-sm text-base-content/60">
-            No organic search traffic recorded in the last 28 days yet.
-          </p>
-        ) : (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <Stat
-                label="Sessions"
-                value={statValue(report.totals.sessions, formatCount)}
-                sub={statDelta(
-                  report.totals.sessions,
-                  report.prevTotals.sessions,
-                )}
-              />
-              <Stat
-                label="Active users"
-                value={statValue(report.totals.activeUsers, formatCount)}
-                sub={statDelta(
-                  report.totals.activeUsers,
-                  report.prevTotals.activeUsers,
-                )}
-              />
-              <Stat
-                label="Engagement rate"
-                value={statValue(report.totals.engagementRate, formatCtr)}
-              />
-              <Stat
-                label="Key events"
-                value={statValue(report.totals.keyEvents, formatCount)}
-                sub={statDelta(
-                  report.totals.keyEvents,
-                  report.prevTotals.keyEvents,
-                )}
-              />
+        <div className="space-y-4">
+          <div className="space-y-1 text-xs text-base-content/60 break-words">
+            <p className="font-medium text-base-content">
+              {report.source.propertyDisplayName || "Google Analytics property"}
+              {" · "}
+              {report.source.propertyId}
+            </p>
+            <p>
+              Previous period: {report.request.previousDateRange.startDate}
+              {" – "}
+              {report.request.previousDateRange.endDate}
+            </p>
+            <p>
+              {report.request.propertyTimeZone
+                ? `Timezone: ${report.request.propertyTimeZone}`
+                : "Property timezone not reported"}
+              {" · "}
+              {report.request.currencyCode
+                ? `Currency: ${report.request.currencyCode}`
+                : "Currency not reported"}
+            </p>
+          </div>
+          {!report.currentRowReturned ? (
+            <p className="text-sm text-base-content/60">
+              GA4 returned no rows for this period. Traffic totals are unknown,
+              not zero.
+            </p>
+          ) : report.totals.sessions === null ? (
+            <p className="text-sm text-base-content/60">
+              Organic session count unavailable. Missing values are shown as —,
+              not zero.
+            </p>
+          ) : report.totals.sessions === 0 ? (
+            <p className="text-sm text-base-content/60">
+              GA4 reports 0 organic sessions for this period.
+            </p>
+          ) : null}
+          {notices.length || report.reportMetadata.hasLimitedData ? (
+            <div
+              className="space-y-1 rounded-md border border-warning/30 bg-warning/10 p-3 text-xs break-words"
+              role="status"
+            >
+              <p className="font-medium">Data quality limitations</p>
+              <p>
+                Period comparisons unavailable because GA4 reports incomplete or
+                restricted data.
+              </p>
+              {notices.length ? (
+                <ul className="list-disc space-y-1 pl-4">
+                  {notices.map((notice) => (
+                    <li key={notice}>{notice}</li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
+          ) : null}
+          <div className="grid grid-cols-2 gap-3">
+            <Stat
+              label="Sessions"
+              value={statValue(report.totals.sessions, formatCount)}
+              sub={statDelta(
+                report.totals.sessions,
+                report.prevTotals.sessions,
+                comparisonAvailable,
+              )}
+            />
+            <Stat
+              label="Active users"
+              value={statValue(report.totals.activeUsers, formatCount)}
+              sub={statDelta(
+                report.totals.activeUsers,
+                report.prevTotals.activeUsers,
+                comparisonAvailable,
+              )}
+            />
+            <Stat
+              label="Engagement rate"
+              value={statValue(report.totals.engagementRate, formatCtr)}
+            />
+            <Stat
+              label="Key events"
+              value={statValue(report.totals.keyEvents, formatCount)}
+              sub={statDelta(
+                report.totals.keyEvents,
+                report.prevTotals.keyEvents,
+                comparisonAvailable,
+              )}
+            />
+          </div>
+          {report.trend.some((day) => day.sessions !== null) ? (
             <div className="h-24">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart
@@ -173,12 +283,22 @@ export function Ga4Card({
                     strokeWidth={2}
                     fill="var(--color-primary)"
                     fillOpacity={0.08}
+                    connectNulls={false}
                   />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
-          </div>
-        )
+          ) : (
+            <p className="text-xs text-base-content/60">
+              No daily session values were returned.
+            </p>
+          )}
+          {report.trend.some((day) => day.sessions === null) ? (
+            <p className="text-xs text-base-content/60">
+              Unreported daily values remain gaps, not zero.
+            </p>
+          ) : null}
+        </div>
       ) : null}
     </CardShell>
   );

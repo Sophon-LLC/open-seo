@@ -15,6 +15,8 @@ type SearchOpportunityInput = {
   limit?: number;
 };
 
+type AnalyticsRow = Record<string, string | number | null>;
+
 type Candidate = {
   page: string;
   normalizedPage: string | null;
@@ -22,15 +24,16 @@ type Candidate = {
   impressions: number;
   ctr: number;
   position: number;
-  joinStatus: "joined" | "gsc_only";
+  joinStatus: "joined" | "gsc_only" | "ambiguous";
+  ga4Rows: AnalyticsRow[];
   ga4: {
-    sessions: number;
-    activeUsers: number;
-    engagedSessions: number;
-    engagementRate: number;
-    keyEvents: number;
-    sessionKeyEventRate: number;
-    transactions: number;
+    sessions: number | null;
+    activeUsers: number | null;
+    engagedSessions: number | null;
+    engagementRate: number | null;
+    keyEvents: number | null;
+    sessionKeyEventRate: number | null;
+    transactions: number | null;
     purchaseRevenue: number | null;
   } | null;
   score: number | null;
@@ -79,9 +82,9 @@ function normalizePageKey(value: string): string | null {
 function numberField(
   row: Record<string, string | number | null>,
   name: string,
-): number {
+): number | null {
   const value = row[name];
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function percentileRanks(values: number[]): number[] {
@@ -146,7 +149,7 @@ async function getOpportunities(
     channel: "organic_search",
   });
 
-  const ga4ByPage = new Map<string, Record<string, string | number | null>>();
+  const ga4ByPage = new Map<string, AnalyticsRow[]>();
   let invalidGa4Rows = 0;
   for (const row of ga4.rows) {
     const host = typeof row.hostName === "string" ? row.hostName : "";
@@ -156,17 +159,40 @@ async function getOpportunities(
       invalidGa4Rows += 1;
       continue;
     }
-    ga4ByPage.set(key, row);
+    const rows = ga4ByPage.get(key) ?? [];
+    rows.push(row);
+    ga4ByPage.set(key, rows);
   }
+  for (const rows of ga4ByPage.values()) {
+    rows.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  }
+  const gscPageCounts = new Map<string, number>();
+  for (const row of gsc.rows) {
+    const key = normalizePageKey(row.keys?.[0] ?? "");
+    if (key) gscPageCounts.set(key, (gscPageCounts.get(key) ?? 0) + 1);
+  }
+  const ambiguousGa4Rows = [...ga4ByPage].reduce(
+    (count, [key, rows]) =>
+      count +
+      (rows.length > 1 || (gscPageCounts.get(key) ?? 0) > 1 ? rows.length : 0),
+    0,
+  );
 
   const candidates: Candidate[] = gsc.rows
     .filter((row) => row.position >= 4 && row.position <= 20)
     .map((row) => {
       const page = row.keys?.[0] ?? "";
       const normalizedPage = normalizePageKey(page);
-      const analytics = normalizedPage
-        ? ga4ByPage.get(normalizedPage)
-        : undefined;
+      const analyticsRows =
+        (normalizedPage ? ga4ByPage.get(normalizedPage) : undefined) ?? [];
+      // URL normalization alone does not prove canonical equivalence. Keep
+      // source rows rather than summing distinct users/rates or choosing one.
+      const ambiguous =
+        analyticsRows.length > 0 &&
+        normalizedPage !== null &&
+        (analyticsRows.length > 1 ||
+          (gscPageCounts.get(normalizedPage) ?? 0) > 1);
+      const analytics = ambiguous ? undefined : analyticsRows[0];
       return {
         page,
         normalizedPage,
@@ -174,7 +200,8 @@ async function getOpportunities(
         impressions: row.impressions,
         ctr: row.ctr,
         position: row.position,
-        joinStatus: analytics ? "joined" : "gsc_only",
+        joinStatus: ambiguous ? "ambiguous" : analytics ? "joined" : "gsc_only",
+        ga4Rows: analyticsRows,
         ga4: analytics
           ? {
               sessions: numberField(analytics, "sessions"),
@@ -187,10 +214,7 @@ async function getOpportunities(
                 "sessionKeyEventRate",
               ),
               transactions: numberField(analytics, "transactions"),
-              purchaseRevenue:
-                typeof analytics.purchaseRevenue === "number"
-                  ? analytics.purchaseRevenue
-                  : null,
+              purchaseRevenue: numberField(analytics, "purchaseRevenue"),
             }
           : null,
         score: null,
@@ -207,20 +231,31 @@ async function getOpportunities(
   const engagementFallback =
     joined.length > 0 &&
     joined.every((candidate) => candidate.ga4.keyEvents === 0);
+  const incompleteMetrics = joined.some((candidate) =>
+    Object.values(candidate.ga4).some((value) => value === null),
+  );
+  const scoreable = joined.flatMap((candidate) => {
+    const value = engagementFallback
+      ? candidate.ga4.engagementRate
+      : candidate.ga4.sessionKeyEventRate;
+    if (
+      value === null ||
+      Object.values(candidate.ga4).some((metric) => metric === null)
+    ) {
+      return [];
+    }
+    return [{ candidate, businessValue: value }];
+  });
   const demand = percentileRanks(
-    joined.map((candidate) => Math.log1p(candidate.impressions)),
+    scoreable.map(({ candidate }) => Math.log1p(candidate.impressions)),
   );
   const businessValue = percentileRanks(
-    joined.map((candidate) =>
-      engagementFallback
-        ? candidate.ga4.engagementRate
-        : candidate.ga4.sessionKeyEventRate,
-    ),
+    scoreable.map((row) => row.businessValue),
   );
   const reachability = percentileRanks(
-    joined.map((candidate) => 20 - candidate.position),
+    scoreable.map(({ candidate }) => 20 - candidate.position),
   );
-  joined.forEach((candidate, index) => {
+  scoreable.forEach(({ candidate }, index) => {
     const components = {
       demand: roundComponent(demand[index] ?? 0),
       businessValue: roundComponent(businessValue[index] ?? 0),
@@ -237,10 +272,21 @@ async function getOpportunities(
   candidates.sort((a, b) => {
     if (a.score == null && b.score != null) return 1;
     if (a.score != null && b.score == null) return -1;
-    return (b.score ?? 0) - (a.score ?? 0) || b.impressions - a.impressions;
+    return (
+      (b.score ?? 0) - (a.score ?? 0) ||
+      b.impressions - a.impressions ||
+      a.page.localeCompare(b.page)
+    );
   });
 
   const matchedRows = joined.length;
+  const matchedGa4Keys = new Set(
+    joined.map((candidate) => candidate.normalizedPage),
+  );
+  const unmatchedGa4Rows = [...ga4ByPage].reduce(
+    (count, [key, rows]) => count + (matchedGa4Keys.has(key) ? 0 : rows.length),
+    invalidGa4Rows,
+  );
   const unmatchedGscRows = candidates.length - matchedRows;
   const returned = candidates.slice(0, limit);
   return {
@@ -266,25 +312,35 @@ async function getOpportunities(
         ? "engagementRate"
         : "sessionKeyEventRate",
       engagementFallback,
-      scoreDataLimited: ga4.reportMetadata.hasLimitedData,
+      scoreDataLimited:
+        ga4.reportMetadata.hasLimitedData ||
+        ambiguousGa4Rows > 0 ||
+        incompleteMetrics,
     },
     coverage: {
       gscRowsConsidered: gsc.rows.length,
       ga4RowsConsidered: ga4.rows.length,
       matchedRows,
       unmatchedGscRows,
-      unmatchedGa4Rows:
-        Math.max(ga4ByPage.size - matchedRows, 0) + invalidGa4Rows,
+      unmatchedGa4Rows,
+      ambiguousGscRows: candidates.filter(
+        (row) => row.joinStatus === "ambiguous",
+      ).length,
+      ambiguousGa4Rows,
     },
     truncated: {
       gsc: gsc.rows.length >= 1_000,
       ga4: ga4.totalRowCount > ga4.rows.length,
       candidates: returned.length < candidates.length,
     },
-    warnings:
-      ga4.request.propertyTimeZone === "America/Los_Angeles"
-        ? ga4.warnings
-        : [...ga4.warnings, "source_time_zones_differ"],
+    warnings: [
+      ...ga4.warnings,
+      ...(ga4.request.propertyTimeZone === "America/Los_Angeles"
+        ? []
+        : ["source_time_zones_differ"]),
+      ...(ambiguousGa4Rows > 0 ? ["ambiguous_normalized_landing_pages"] : []),
+      ...(incompleteMetrics ? ["incomplete_landing_page_metrics"] : []),
+    ],
     reportMetadata: ga4.reportMetadata,
     quota: ga4.quota,
   };

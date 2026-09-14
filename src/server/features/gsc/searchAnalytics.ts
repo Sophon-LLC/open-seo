@@ -72,6 +72,21 @@ function formatDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+// GSC dates are Pacific calendar dates. Use UTC only as a date-arithmetic
+// container after resolving PT, so DST's 23/25-hour days cannot shift a range.
+function pacificCalendarDate(instant: Date): Date {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(instant);
+  const byType = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+  return new Date(`${byType.year}-${byType.month}-${byType.day}T00:00:00.000Z`);
+}
+
 // Subtract calendar months in UTC, clamping the day to the target month's length.
 function subtractUtcMonths(date: Date, months: number): Date {
   const day = date.getUTCDate();
@@ -89,10 +104,11 @@ function subtractRange(end: Date, range: GscDateRange): Date {
   const d = new Date(end);
   switch (range) {
     case "last_7_days":
-      d.setUTCDate(d.getUTCDate() - 7);
+      // GSC includes both the start and end dates in the requested range.
+      d.setUTCDate(d.getUTCDate() - 6);
       break;
     case "last_28_days":
-      d.setUTCDate(d.getUTCDate() - 28);
+      d.setUTCDate(d.getUTCDate() - 27);
       break;
     case "last_3_months":
       return subtractUtcMonths(d, 3);
@@ -116,7 +132,8 @@ export function resolveDateRange(
   input: Pick<GscPerformanceInput, "dateRange" | "startDate" | "endDate">,
   today: Date = new Date(),
 ): { startDate: string; endDate: string } {
-  const floor = sixteenMonthFloor(today);
+  const calendarToday = pacificCalendarDate(today);
+  const floor = sixteenMonthFloor(calendarToday);
 
   if (input.startDate && input.endDate) {
     // Clamp the start to GSC's 16-month lower bound.
@@ -124,7 +141,7 @@ export function resolveDateRange(
     return { startDate, endDate: input.endDate };
   }
 
-  const end = new Date(today);
+  const end = new Date(calendarToday);
   end.setUTCDate(end.getUTCDate() - GSC_DATA_LAG_DAYS);
   const start = subtractRange(end, input.dateRange ?? "last_28_days");
   const startDate = formatDate(start);

@@ -44,6 +44,7 @@ export function DashboardPage({ projectId }: { projectId: string }) {
   const refreshFiredRef = useRef(false);
   const needsSnapshot =
     activation?.domain != null &&
+    !overviewQuery.isError &&
     overview !== undefined &&
     (overview.backlinks === null || overview.backlinks.stale);
   useEffect(() => {
@@ -104,17 +105,21 @@ export function DashboardPage({ projectId }: { projectId: string }) {
           },
         ]
       : []),
-    {
-      key: "audit",
-      hasData: overview?.audit != null,
-      node: (
-        <AuditHealthCard
-          projectId={projectId}
-          audit={overview?.audit ?? null}
-        />
-      ),
-    },
-    ...(showBacklinks
+    ...(overview
+      ? [
+          {
+            key: "audit",
+            hasData: overview?.audit != null,
+            node: (
+              <AuditHealthCard
+                projectId={projectId}
+                audit={overview?.audit ?? null}
+              />
+            ),
+          },
+        ]
+      : []),
+    ...(showBacklinks && overview
       ? [
           {
             key: "backlinks",
@@ -124,6 +129,7 @@ export function DashboardPage({ projectId }: { projectId: string }) {
                 projectId={projectId}
                 backlinks={overview?.backlinks ?? null}
                 refreshing={refreshMutation.isPending}
+                failed={refreshMutation.isError}
               />
             ),
           },
@@ -135,6 +141,13 @@ export function DashboardPage({ projectId }: { projectId: string }) {
     <div className="px-4 py-4 pb-24 md:px-6 md:py-6 md:pb-8">
       <div className="mx-auto flex max-w-5xl flex-col gap-5">
         <h1 className="text-2xl font-semibold">Dashboard</h1>
+
+        {overviewQuery.isError ? (
+          <p className="alert alert-error" role="alert">
+            Could not load the audit and backlink overview. These results are
+            unavailable, not zero. Any previously loaded snapshots may be stale.
+          </p>
+        ) : null}
 
         <WorkspaceMergeBanner />
 
