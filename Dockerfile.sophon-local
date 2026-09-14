@@ -1,0 +1,9 @@
+# Local pilot overlay. Dependencies stay identical to the pinned upstream image.
+# Rebuild with Dockerfile.selfhost if package.json or the lockfile changes.
+FROM ghcr.io/every-app/open-seo:v0.1.8@sha256:79f19fb7100e71133effa43898a2ba1ad4702075f3127e6ca91cd076e1101538
+
+WORKDIR /app
+COPY src/ ./src/
+
+# The inherited entrypoint builds on first start. Credentials and the database
+# are runtime-only inputs supplied by the loopback-only pilot compose file.
