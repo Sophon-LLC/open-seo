@@ -198,6 +198,141 @@ describe("SearchOpportunityService", () => {
     });
   });
 
+  it("preserves colliding landing rows as ambiguous without order-dependent attribution", async () => {
+    mocks.getPerformance.mockResolvedValue({
+      siteUrl: "https://example.com/",
+      rows: [
+        {
+          keys: ["https://example.com/High-Value"],
+          clicks: 10,
+          impressions: 1_000,
+          ctr: 0.01,
+          position: 6,
+        },
+      ],
+    });
+    const rows = [
+      ga4Result.rows[0],
+      {
+        ...ga4Result.rows[1],
+        landingPage: "/High-Value",
+        activeUsers: 90,
+        purchaseRevenue: 90,
+      },
+    ];
+    const run = async (inputRows: typeof rows) => {
+      mocks.runGa4Report.mockResolvedValue({ ...ga4Result, rows: inputRows });
+      return SearchOpportunityService.getOpportunities(
+        { projectId: "project_1" },
+        { now: new Date("2026-08-06T12:00:00Z") },
+      );
+    };
+    const result = await run(rows);
+    expect(result).toEqual(await run([rows[1], rows[0]]));
+    expect(result.rows[0]).toMatchObject({
+      joinStatus: "ambiguous",
+      ga4: null,
+      score: null,
+      scoreComponents: null,
+    });
+    expect(result.rows[0]?.ga4Rows).toEqual(expect.arrayContaining(rows));
+    expect(result.rows[0]?.ga4Rows).toHaveLength(2);
+    expect(result.coverage).toMatchObject({
+      matchedRows: 0,
+      unmatchedGa4Rows: 2,
+      ambiguousGscRows: 1,
+      ambiguousGa4Rows: 2,
+    });
+    expect(result.scoring.scoreDataLimited).toBe(true);
+    expect(result.warnings).toContain("ambiguous_normalized_landing_pages");
+  });
+
+  it("preserves unavailable metrics and excludes them from scoring instead of fabricating zeroes", async () => {
+    mocks.getPerformance.mockResolvedValue({
+      siteUrl: "https://example.com/",
+      rows: [
+        {
+          keys: ["https://example.com/other"],
+          clicks: 1,
+          impressions: 100,
+          ctr: 0.01,
+          position: 10,
+        },
+      ],
+    });
+    const unavailable = {
+      sessions: null,
+      activeUsers: null,
+      engagedSessions: null,
+      engagementRate: null,
+      keyEvents: null,
+      sessionKeyEventRate: null,
+      transactions: null,
+      purchaseRevenue: null,
+    };
+    mocks.runGa4Report.mockResolvedValue({
+      ...ga4Result,
+      rows: [{ ...ga4Result.rows[1], ...unavailable }],
+      rowCount: 1,
+      totalRowCount: 1,
+    });
+    const result = await SearchOpportunityService.getOpportunities({
+      projectId: "project_1",
+    });
+    expect(result.rows[0]).toMatchObject({
+      joinStatus: "joined",
+      ga4: unavailable,
+      score: null,
+      scoreComponents: null,
+    });
+    expect(result.scoring).toMatchObject({
+      engagementFallback: false,
+      scoreDataLimited: true,
+    });
+    expect(result.warnings).toContain("incomplete_landing_page_metrics");
+  });
+
+  it("does not attribute one analytics row to multiple normalized GSC pages", async () => {
+    const rows = [
+      "https://example.com/High-Value/",
+      "https://example.com/High-Value",
+    ].map((page) => ({
+      keys: [page],
+      clicks: 10,
+      impressions: 1_000,
+      ctr: 0.01,
+      position: 6,
+    }));
+    const run = async (inputRows: typeof rows) => {
+      mocks.getPerformance.mockResolvedValue({
+        siteUrl: "https://example.com/",
+        rows: inputRows,
+      });
+      return SearchOpportunityService.getOpportunities(
+        { projectId: "project_1" },
+        { now: new Date("2026-08-06T12:00:00Z") },
+      );
+    };
+    const result = await run(rows);
+    expect(result).toEqual(await run([rows[1], rows[0]]));
+    expect(result.rows).toHaveLength(2);
+    for (const row of result.rows) {
+      expect(row).toMatchObject({
+        joinStatus: "ambiguous",
+        ga4: null,
+        score: null,
+        ga4Rows: [ga4Result.rows[0]],
+      });
+    }
+    expect(result.coverage).toMatchObject({
+      matchedRows: 0,
+      unmatchedGa4Rows: 2,
+      ambiguousGscRows: 2,
+      ambiguousGa4Rows: 1,
+    });
+    expect(result.scoring.scoreDataLimited).toBe(true);
+  });
+
   it("anchors the shared default range to the GA4 property date", async () => {
     mocks.getGa4Connection.mockResolvedValue({
       propertyTimeZone: "America/Los_Angeles",
