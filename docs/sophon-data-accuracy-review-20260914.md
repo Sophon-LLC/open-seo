@@ -14,12 +14,20 @@ Three actionable defects were reproduced against the baseline and corrected loca
 
 ## Integrated fix verification
 
-- GSC fixed-day ranges contain exactly 7/28 dates. The UTC convenience anchor and three-day lag are unchanged; actual ranges must be used when comparing providers.
+- GSC fixed-day ranges contain exactly 7/28 dates. The final integrated revision anchors relative ranges to the provider's Pacific calendar, requests finalized data only, and preserves the three-day lag. Actual dates and provider timezones must be used when comparing GSC with GA4.
 - GA4 dashboard source, date ranges, property timezone/currency, quality metadata and warnings are preserved. Missing/restricted totals and trend dates remain `null`; measured zero remains zero. Incomplete/limited comparisons are suppressed.
 - Landing-page normalization collisions retain their original GA4 rows, expose ambiguous joins and withhold authoritative scores. The implementation does not sum distinct users or rates without a valid aggregation contract.
 - The local self-hosted client no longer subscribes to a deliberately absent Better Auth session endpoint. Server authorization and hosted-mode authentication are unchanged.
 - Integrator verification: 109 tests in 15 files passed, TypeScript passed, type-aware lint reported zero warnings/errors, and `git diff --check` passed. Independent review of the dashboard projection/UI found no blocking issue (22 focused tests; overlapping, not additional to the integrated total).
 - UI, live property reconciliation and local container readiness are separate deployment checks. Account analytics and credentials are not part of this public source report.
+
+### Final dashboard and export follow-up
+
+- GSC rate and position are unavailable when there are no impressions; measured zero clicks with impressions remains a real zero CTR. Calendar tests cover UTC/Pacific midnight and DST boundaries; explicit user dates are preserved.
+- Failed, running, never-run and zero-page site audits do not display a healthy verdict. Missing, failed and stale dashboard/backlink sources are visibly qualified instead of being converted into empty or current healthy results. No paid provider was configured or called.
+- Query/page exports retain the actual reporting period, PT/finalized-data context, the 1,000-row cap and potential truncation. Striking-distance UI and exports disclose the bounded top query-page input, best returned page per query, positions 5–20 and maximum 100 candidates. Empty candidates are not described as no site-wide opportunities. CSV/Sheets sanitization is preserved.
+- Integration verification: 151 tests in 19 files passed, full TypeScript passed, touched-file type-aware lint/format checks and diff checks passed. The final export patch also passed an independent 8-test run. These are overlapping checks, not additive totals.
+- Core fixes are recorded in fork PR #1; container installation and live-data acceptance are recorded separately. The historical audit sections below retain the state and evidence at the time each baseline finding was investigated.
 
 ### 1. P1 — GSC “Last 7/28 days” requests 8/29 inclusive days
 

@@ -45,17 +45,31 @@ type ExportCoverage = Awaited<
   ReturnType<typeof exportSearchPerformanceTable>
 >["coverage"];
 
+const STRIKING_COVERAGE_NOTE =
+  "Based on up to 1,000 top query-page rows returned by Google, not a complete inventory. Uses the best-ranking returned page per query, then filters positions 5 to 20 and retains up to 100 candidates sorted by impressions. Metrics belong to the selected query-page row. Google may omit queries or pages, including a better-ranking page.";
+
 function strikingExportTable(report: Report): ExportTable {
   const stamp = `${report.range.startDate}-to-${report.range.endDate}`;
+  const window = `${report.range.startDate} to ${report.range.endDate} · PT (America/Los_Angeles) · finalized data only`;
   return {
     filename: `search-performance-striking-distance-${stamp}.csv`,
-    headers: ["Query", "Page", "Impressions", "Clicks", "Position"],
+    headers: [
+      "Query",
+      "Page",
+      "Impressions",
+      "Clicks",
+      "Position",
+      "Reporting window",
+      "Export coverage",
+    ],
     rows: report.strikingDistance.map((row) => [
       row.query,
       row.page,
       row.impressions,
       row.clicks,
       row.position,
+      window,
+      STRIKING_COVERAGE_NOTE,
     ]),
   };
 }
@@ -352,11 +366,10 @@ export function StrikingDistanceTable({
 
   if (rows.length === 0) {
     return (
-      <p className="p-6 text-sm text-base-content/60">
-        No striking-distance queries in this period. These are queries ranking
-        at positions 5 to 20, where an improvement is most likely to move
-        traffic.
-      </p>
+      <div className="space-y-3 p-6 text-sm text-base-content/60">
+        <p>No candidates found in these returned rows.</p>
+        <p>{STRIKING_COVERAGE_NOTE}</p>
+      </div>
     );
   }
 
@@ -364,8 +377,7 @@ export function StrikingDistanceTable({
     <>
       <div className="p-4">
         <p className="mb-3 text-sm text-base-content/60">
-          Queries ranking at positions 5 to 20, sorted by impressions. Improve
-          the listed page to move them into the top results.
+          {STRIKING_COVERAGE_NOTE}
         </p>
         <AppDataTable
           table={table}
