@@ -35,6 +35,8 @@ Three actionable defects were reproduced against the baseline and corrected loca
 - Removed the global modal and its route-triggered state/effects. The non-blocking notice limits the missing setup to provider-backed keyword, SERP and backlink features, explains separate Google authorization, and discloses potential provider charges. A failed configuration check remains unknown rather than falsely reporting a missing key.
 - Existing server-side provider gates, Google permissions, hosted authentication, database schema and paid-provider configuration are unchanged.
 - Final integration suite: 154 tests across 20 relevant files passed, plus full TypeScript, touched-file type-aware lint, formatting and diff checks. The three rendered-component tests passed independently. These component tests do not by themselves establish browser navigation behavior; that is a separate local deployment acceptance check.
+- Local acceptance completed on the source overlay from commit `9027c0e`, image `sophon/open-seo:data-accuracy-20260914-final` (image config SHA-256 `09cedb890d1471806a5923458f77fc5994871e14eb2d0765155a0d26f343d35e`). The container is healthy and published only on `127.0.0.1:3014`; the data volume and existing grants were retained with a private offline backup.
+- Real Edge verification: dashboard reload, GSC navigation and return navigation rendered without the removed setup modal. GSC totals and the exact reporting period remained visible. The connected GA4 report returned no rows and remained explicitly unknown rather than zero. Neither connection state nor this UI test proves purchase attribution, complete Google/Bing indexing or measured SEO/GEO uplift.
 
 ### 1. P1 — GSC “Last 7/28 days” requests 8/29 inclusive days
 
