@@ -1,4 +1,5 @@
 import { AgentSetup } from "@/client/features/ai-mcp/AgentSetup";
+import { SkillsCatalog } from "@/client/features/ai-mcp/SkillsCatalog";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowUpRight, ShieldAlert } from "lucide-react";
 import { getAuthMode, isHostedClientAuthMode } from "@/lib/auth-mode";
@@ -58,6 +59,9 @@ function AiPage() {
           domain lookups, and backlink reviews from your editor or chat.
         </p>
 
+        <div className="mt-8">
+          <SkillsCatalog />
+        </div>
         <section className="mt-8 rounded-xl border border-base-300 p-5">
           <AgentSetup />
         </section>

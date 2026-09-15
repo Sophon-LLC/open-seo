@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useFeatureAvailability } from "@/client/navigation/availability";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronRight, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
@@ -19,6 +20,7 @@ export function DashboardOnboarding({
   projectId: string;
   activation: DashboardActivation;
 }) {
+  const availability = useFeatureAvailability();
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<DashboardSetupStep | null>(() =>
     getGoogleLinkError("gsc") ||
@@ -50,7 +52,9 @@ export function DashboardOnboarding({
       ),
   });
   const steps = setupSteps.filter(
-    (step) => step.id !== "team" || isHostedClientAuthMode(),
+    (step) =>
+      (step.id !== "team" || isHostedClientAuthMode()) &&
+      (step.id !== "competitor" || availability.research),
   );
   const remaining = steps.filter(
     (step) => getStepStatus(activation, step.id) === "todo",

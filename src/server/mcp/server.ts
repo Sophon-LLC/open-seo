@@ -35,6 +35,10 @@ import {
   getSearchOpportunitiesTool,
 } from "@/server/mcp/tools/google-analytics-tools";
 import { createProjectTool } from "@/server/mcp/tools/create-project";
+import {
+  importChannelReportsTool,
+  getChannelReportsTool,
+} from "@/server/mcp/tools/channel-reports";
 import { listProjectsTool } from "@/server/mcp/tools/list-projects";
 import {
   getProjectContextTool,
@@ -162,6 +166,8 @@ export function createOpenSeoMcpServer(authProps: McpProps) {
   register(createProjectTool);
   register(getProjectContextTool);
   register(updateProjectContextTool);
+  register(importChannelReportsTool);
+  register(getChannelReportsTool);
   register(listSavedKeywordsTool);
   register(researchKeywordsTool);
   register(saveKeywordsTool);

@@ -33,7 +33,11 @@ function fillDailySessions(
   return days;
 }
 
-async function getReport(input: { projectId: string }) {
+async function getReport(input: {
+  projectId: string;
+  startDate?: string;
+  endDate?: string;
+}) {
   const overview = await Ga4OrganicOverviewService.getOrganicOverview(input);
   const totals = (row: Record<string, string | number | null> | null) => ({
     sessions: overviewMetric(row, "sessions"),

@@ -10,6 +10,7 @@ import {
 } from "@/server/features/gsc/searchAnalytics";
 import {
   buildStrikingDistanceRows,
+  buildSearchTrend,
   previousPeriod,
   sumSearchTotals,
   toDimensionRows,
@@ -68,6 +69,8 @@ export const getSearchPerformanceReport = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { startDate, endDate } = resolveDateRange({
       dateRange: data.dateRange,
+      startDate: data.startDate,
+      endDate: data.endDate,
     });
     const prev = previousPeriod(startDate, endDate);
     const projectId = context.projectId;
@@ -82,7 +85,7 @@ export const getSearchPerformanceReport = createServerFn({ method: "POST" })
           dimensions: ["date"],
           filters,
           rowLimit: DAILY_ROW_LIMIT,
-          dataState: "final",
+          dataState: data.dataState,
         }),
         GscService.getPerformance({
           projectId,
@@ -91,7 +94,7 @@ export const getSearchPerformanceReport = createServerFn({ method: "POST" })
           dimensions: ["date"],
           filters,
           rowLimit: DAILY_ROW_LIMIT,
-          dataState: "final",
+          dataState: data.dataState,
         }),
         GscService.getPerformance({
           projectId,
@@ -100,7 +103,7 @@ export const getSearchPerformanceReport = createServerFn({ method: "POST" })
           dimensions: ["query", "page"],
           filters,
           rowLimit: STRIKING_DISTANCE_FETCH_LIMIT,
-          dataState: "final",
+          dataState: data.dataState,
         }),
         GscService.getPerformance({
           projectId,
@@ -109,10 +112,11 @@ export const getSearchPerformanceReport = createServerFn({ method: "POST" })
           dimensions: ["country"],
           filters: deviceFilters,
           rowLimit: COUNTRY_ROW_LIMIT,
-          dataState: "final",
+          dataState: data.dataState,
         }),
       ]);
 
+      const trend = buildSearchTrend(current.rows, startDate, endDate);
       return {
         connected: true as const,
         range: {
@@ -122,6 +126,18 @@ export const getSearchPerformanceReport = createServerFn({ method: "POST" })
           prevEndDate: prev.endDate,
         },
         totals: sumSearchTotals(current.rows),
+        freshness: {
+          dataState: data.dataState,
+          lastAvailableDate:
+            trend.filter((day) => day.clicks !== null).at(-1)?.date ?? null,
+          comparisonAvailable:
+            data.dataState === "final" &&
+            trend.every((day) => day.clicks !== null) &&
+            buildSearchTrend(previous.rows, prev.startDate, prev.endDate).every(
+              (day) => day.clicks !== null,
+            ),
+        },
+        trend,
         prevTotals: sumSearchTotals(previous.rows),
         strikingDistance: buildStrikingDistanceRows(queryPages.rows),
         countries: toDimensionRows(countries.rows),
@@ -145,6 +161,8 @@ export const getSearchPerformanceTable = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { startDate, endDate } = resolveDateRange({
       dateRange: data.dateRange,
+      startDate: data.startDate,
+      endDate: data.endDate,
     });
     const { filters } = buildGscFilters(data);
     const offset = (data.page - 1) * data.pageSize;
@@ -159,7 +177,7 @@ export const getSearchPerformanceTable = createServerFn({ method: "POST" })
         // One extra row tells us whether a further page exists.
         rowLimit: data.pageSize + 1,
         startRow: offset,
-        dataState: "final",
+        dataState: data.dataState,
       });
 
       const fetched = toDimensionRows(result.rows);
@@ -192,6 +210,8 @@ export const exportSearchPerformanceTable = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { startDate, endDate } = resolveDateRange({
       dateRange: data.dateRange,
+      startDate: data.startDate,
+      endDate: data.endDate,
     });
     const { filters } = buildGscFilters(data);
 
@@ -202,7 +222,7 @@ export const exportSearchPerformanceTable = createServerFn({ method: "POST" })
       dimensions: [data.dimension],
       filters,
       rowLimit: EXPORT_ROW_LIMIT,
-      dataState: "final",
+      dataState: data.dataState,
     });
 
     const rows = toDimensionRows(result.rows);

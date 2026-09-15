@@ -10,6 +10,11 @@ import { GscReEngagementModal } from "@/client/features/gsc/GscReEngagementModal
 import { Sidebar } from "@/client/components/Sidebar";
 import { BILLING_ROUTE } from "@/shared/billing";
 import { getSeoApiKeyStatus } from "@/serverFunctions/config";
+import { getSamAccessSetupStatus } from "@/serverFunctions/samAccess";
+import {
+  AvailableRoute,
+  FeatureAvailabilityContext,
+} from "@/client/navigation/availability";
 import { getProjects } from "@/serverFunctions/projects";
 import { getLastProjectId } from "@/client/lib/active-project";
 
@@ -64,43 +69,64 @@ export function AuthenticatedAppLayout({
 
   const shouldShowSeoApiWarning =
     !seoApiKeyStatusError && isSeoApiKeyConfigured === false;
+  const chatStatus = useQuery({
+    queryKey: ["samAccessStatus", sidebarProjectId],
+    queryFn: () =>
+      getSamAccessSetupStatus({ data: { projectId: sidebarProjectId } }),
+    enabled: Boolean(sidebarProjectId),
+    retry: false,
+  });
+  const availability = {
+    research: !seoApiKeyStatusQuery.isError && isSeoApiKeyConfigured === true,
+    chat: !chatStatus.isError && chatStatus.data?.enabled === true,
+  };
+  const onSettings = location.pathname.includes("/settings");
 
   return (
-    <div className="flex h-[100dvh] bg-base-200">
-      <div className="hidden shrink-0 md:block">
-        <Sidebar projectId={sidebarProjectId} />
-      </div>
+    <FeatureAvailabilityContext.Provider value={availability}>
+      <div className="flex h-[100dvh] bg-base-200">
+        <div className="hidden shrink-0 md:block">
+          <Sidebar projectId={sidebarProjectId} />
+        </div>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <MobileTopBar
-          drawerOpen={drawerOpen}
-          onOpenDrawer={() => setDrawerOpen(true)}
-        />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <MobileTopBar
+            drawerOpen={drawerOpen}
+            onOpenDrawer={() => setDrawerOpen(true)}
+          />
 
-        {/* PostHog-style cutout: the main content sits on a raised panel with a
+          {/* PostHog-style cutout: the main content sits on a raised panel with a
             thin strip of the sidebar background above it and a hairline border. */}
-        <div className="flex min-h-0 flex-1 flex-col md:pt-2">
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-base-100 md:rounded-tl-lg md:border-l md:border-t md:border-base-300">
-            <SeoApiStatusBanners
-              shouldShowSeoApiWarning={shouldShowSeoApiWarning}
-              seoApiKeyStatusError={seoApiKeyStatusError}
-            />
+          <div className="flex min-h-0 flex-1 flex-col md:pt-2">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-base-100 md:rounded-tl-lg md:border-l md:border-t md:border-base-300">
+              <SeoApiStatusBanners
+                shouldShowSeoApiWarning={onSettings && shouldShowSeoApiWarning}
+                seoApiKeyStatusError={onSettings && seoApiKeyStatusError}
+              />
 
-            {banner}
+              {banner}
 
-            <div className="min-h-0 flex-1 overflow-auto">{children}</div>
+              <div className="min-h-0 flex-1 overflow-auto">
+                <AvailableRoute
+                  pathname={location.pathname}
+                  projectId={projectId}
+                >
+                  {children}
+                </AvailableRoute>
+              </div>
+            </div>
           </div>
         </div>
+
+        <MobileSidebarDrawer
+          open={drawerOpen}
+          projectId={sidebarProjectId}
+          onClose={() => setDrawerOpen(false)}
+        />
+
+        <GscReEngagementModal projectId={sidebarProjectId} suppressed={false} />
       </div>
-
-      <MobileSidebarDrawer
-        open={drawerOpen}
-        projectId={sidebarProjectId}
-        onClose={() => setDrawerOpen(false)}
-      />
-
-      <GscReEngagementModal projectId={sidebarProjectId} suppressed={false} />
-    </div>
+    </FeatureAvailabilityContext.Provider>
   );
 }
 

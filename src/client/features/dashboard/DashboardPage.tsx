@@ -1,13 +1,22 @@
-import { useEffect, useRef } from "react";
+import { GscCard } from "./GscCard";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { sort } from "remeda";
+import { ReportRefreshControls } from "./ReportRefreshControls";
+import { SkillsCatalog } from "../ai-mcp/SkillsCatalog";
 import { DashboardOnboarding } from "./DashboardOnboarding";
+import { DashboardFilters, type TrafficChannel } from "./DashboardFilters";
+import {
+  dashboardDates,
+  advanceDashboardDates,
+} from "@/types/schemas/reportDates";
+import { useFeatureAvailability } from "@/client/navigation/availability";
 import {
   AuditHealthCard,
   BacklinkPulseCard,
-  GscCard,
 } from "@/client/features/dashboard/DashboardCards";
 import { Ga4Card } from "@/client/features/dashboard/Ga4Card";
+import { ChannelReportsCard } from "./ChannelReportsCard";
 import { WorkspaceMergeBanner } from "@/client/features/dashboard/WorkspaceMergeBanner";
 import { getStandardErrorMessage } from "@/client/lib/error-messages";
 import {
@@ -17,7 +26,21 @@ import {
 } from "@/serverFunctions/dashboard";
 
 export function DashboardPage({ projectId }: { projectId: string }) {
+  const availability = useFeatureAvailability();
   const queryClient = useQueryClient();
+  const [section, setSection] = useState<
+    "traffic" | "indexing" | "content" | "skills"
+  >("traffic");
+  const [dates, setDates] = useState(() => dashboardDates(28));
+  const [preset, setPreset] = useState<7 | 28 | 90 | null>(28);
+  const [dataState, setDataState] = useState<"all" | "final">("all");
+  const advanceDates = useCallback(() => {
+    const next = advanceDashboardDates(dates, preset);
+    if (next === dates) return false;
+    setDates(next);
+    return true;
+  }, [dates, preset]);
+  const [channel, setChannel] = useState<TrafficChannel>("all");
 
   const activationQuery = useQuery({
     queryKey: ["dashboardActivation", projectId],
@@ -43,6 +66,7 @@ export function DashboardPage({ projectId }: { projectId: string }) {
   });
   const refreshFiredRef = useRef(false);
   const needsSnapshot =
+    availability.research &&
     activation?.domain != null &&
     !overviewQuery.isError &&
     overview !== undefined &&
@@ -82,26 +106,39 @@ export function DashboardPage({ projectId }: { projectId: string }) {
     );
   }
 
-  const showBacklinks = activation.domain !== null;
+  const showBacklinks = availability.research && activation.domain !== null;
   const gscConnected = activation.gsc.connected;
   const ga4Connected = activation.ga4.connected;
 
   const cards = [
-    ...(gscConnected
+    ...(channel !== "ga4"
       ? [
           {
             key: "gsc",
             hasData: true,
-            node: <GscCard projectId={projectId} connected />,
+            node: (
+              <GscCard
+                dataState={dataState}
+                projectId={projectId}
+                connected={gscConnected}
+                dates={dates}
+              />
+            ),
           },
         ]
       : []),
-    ...(ga4Connected || !activation.ga4.cardDismissedAt
+    ...(channel !== "gsc" && (ga4Connected || !activation.ga4.cardDismissedAt)
       ? [
           {
             key: "ga4",
             hasData: ga4Connected,
-            node: <Ga4Card projectId={projectId} connected={ga4Connected} />,
+            node: (
+              <Ga4Card
+                projectId={projectId}
+                connected={ga4Connected}
+                dates={dates}
+              />
+            ),
           },
         ]
       : []),
@@ -140,7 +177,54 @@ export function DashboardPage({ projectId }: { projectId: string }) {
   return (
     <div className="px-4 py-4 pb-24 md:px-6 md:py-6 md:pb-8">
       <div className="mx-auto flex max-w-5xl flex-col gap-5">
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
+        <div>
+          <h1 className="text-2xl font-semibold">Growth overview</h1>
+          <p className="mt-1 text-sm text-base-content/60">
+            Search visibility, qualified traffic and operational evidence
+          </p>
+        </div>
+        {section !== "skills" && (
+          <ReportRefreshControls
+            key={projectId}
+            projectId={projectId}
+            onBeforeRefresh={advanceDates}
+          />
+        )}
+        <nav
+          aria-label="Dashboard sections"
+          className="flex flex-wrap gap-2 border-b border-base-300 pb-3"
+        >
+          {(
+            [
+              ["traffic", "Traffic & conversion"],
+              ["indexing", "Indexing & submissions"],
+              ["content", "Content & tasks"],
+              ["skills", "SEO & GEO Skills"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              aria-pressed={section === key}
+              className={`btn btn-sm ${section === key ? "btn-primary" : "btn-ghost"}`}
+              onClick={() => setSection(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+        {section === "skills" && <SkillsCatalog />}
+        {section === "traffic" && (
+          <DashboardFilters
+            dates={dates}
+            preset={preset}
+            onPreset={setPreset}
+            dataState={dataState}
+            onDataState={setDataState}
+            onDates={setDates}
+            channel={channel}
+            onChannel={setChannel}
+          />
+        )}
 
         {overviewQuery.isError ? (
           <p className="alert alert-error" role="alert">
@@ -151,21 +235,60 @@ export function DashboardPage({ projectId }: { projectId: string }) {
 
         <WorkspaceMergeBanner />
 
-        <DashboardOnboarding
-          key={projectId}
-          projectId={projectId}
-          activation={activation}
-        />
-
-        {/* Every card is half width on large screens (only the checklist spans).
-          Cards with data render before setup pitches and empty states. */}
+        {/* Search trends span both columns. Show evidence before setup prompts. */}
         <div className="grid items-start gap-5 lg:grid-cols-2">
-          {sort(cards, (a, b) => Number(b.hasData) - Number(a.hasData)).map(
-            (card) => (
-              <div key={card.key}>{card.node}</div>
+          {sort(
+            cards.filter((card) =>
+              section === "traffic"
+                ? card.key === "gsc" || card.key === "ga4"
+                : section === "indexing"
+                  ? card.key === "audit" || card.key === "backlinks"
+                  : false,
             ),
-          )}
+            (a, b) => Number(b.hasData) - Number(a.hasData),
+          ).map((card) => (
+            <div
+              key={card.key}
+              className={
+                card.key === "gsc" || card.key === "ga4"
+                  ? "min-w-0 lg:col-span-2"
+                  : "min-w-0"
+              }
+            >
+              {card.node}
+            </div>
+          ))}
         </div>
+        {section === "indexing" && (
+          <>
+            <p className="text-sm text-base-content/60">
+              Google page indexing status is not connected here. Site audit
+              findings are not Google's indexing report.
+            </p>
+            <ChannelReportsCard
+              key="indexing"
+              projectId={projectId}
+              onlyChannels={["bing", "indexnow"]}
+            />
+          </>
+        )}
+        {section === "content" && (
+          <ChannelReportsCard
+            key="content"
+            projectId={projectId}
+            onlyChannels={["translation", "schedule"]}
+          />
+        )}
+        <details className="border-t border-base-300 pt-3">
+          <summary className="cursor-pointer text-sm text-base-content/60">
+            Connections & setup
+          </summary>
+          <DashboardOnboarding
+            key={projectId}
+            projectId={projectId}
+            activation={activation}
+          />
+        </details>
       </div>
     </div>
   );

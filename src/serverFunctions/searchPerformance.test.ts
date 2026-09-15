@@ -120,6 +120,150 @@ describe("bounded Search Performance export", () => {
 afterEach(() => vi.useRealTimers());
 
 describe("Search Performance report contract", () => {
+  it("includes fresh Google observations consistently in report, details and export", async () => {
+    mocks.query.mockImplementation(async (_site, request) =>
+      request.dataState === "all"
+        ? [
+            {
+              keys: [
+                request.dimensions?.[0] === "date" ? request.endDate : "cue",
+              ],
+              clicks: 4,
+              impressions: 20,
+              ctr: 0.2,
+              position: 3,
+            },
+          ]
+        : [],
+    );
+    const data = {
+      projectId: "authorized-project",
+      dateRange: "last_7_days" as const,
+      startDate: "2026-09-08",
+      endDate: "2026-09-14",
+      dataState: "all" as const,
+    };
+    const report = await getSearchPerformanceReport({ data });
+    expect(report).toMatchObject({
+      totals: { clicks: 4 },
+      freshness: { dataState: "all", lastAvailableDate: "2026-09-14" },
+    });
+    await getSearchPerformanceTable({ data: { ...data, dimension: "query" } });
+    await exportSearchPerformanceTable({
+      data: { ...data, dimension: "page" },
+    });
+    expect(mocks.query).toHaveBeenCalledTimes(6);
+    for (const [, request] of mocks.query.mock.calls)
+      expect(request.dataState).toBe("all");
+  });
+  it("applies custom dates to totals, daily rows, detail rows and export", async () => {
+    mocks.query.mockResolvedValue([]);
+    const data = {
+      projectId: "authorized-project",
+      dateRange: "last_28_days" as const,
+      startDate: "2026-09-02",
+      endDate: "2026-09-08",
+    };
+    const report = await getSearchPerformanceReport({ data });
+    expect(report).toMatchObject({
+      range: {
+        startDate: data.startDate,
+        endDate: data.endDate,
+        prevStartDate: "2026-08-26",
+        prevEndDate: "2026-09-01",
+      },
+    });
+    if (report.connected) expect(report.trend).toHaveLength(7);
+    mocks.query.mockClear();
+    await getSearchPerformanceTable({
+      data: { ...data, dimension: "query", page: 1, pageSize: 25 },
+    });
+    await exportSearchPerformanceTable({
+      data: { ...data, dimension: "page" },
+    });
+    for (const [, request] of mocks.query.mock.calls) {
+      expect(request).toMatchObject({
+        startDate: data.startDate,
+        endDate: data.endDate,
+        dataState: "final",
+      });
+    }
+  });
+  it.each([
+    { startDate: "2026-09-10" },
+    { startDate: "2026-09-10", endDate: "2026-09-01" },
+    { startDate: "2026-02-30", endDate: "2026-03-01" },
+    { startDate: "2026-01-01", endDate: "2026-09-01" },
+  ])(
+    "rejects invalid explicit dates before requesting Google: %j",
+    async (dates) => {
+      await expect(async () =>
+        getSearchPerformanceReport({
+          data: {
+            projectId: "authorized-project",
+            dateRange: "last_28_days",
+            ...dates,
+          },
+        }),
+      ).rejects.toThrow();
+      expect(mocks.query).not.toHaveBeenCalled();
+    },
+  );
+  it("returns dated trend observations with gaps, not invented zero traffic", async () => {
+    mocks.query.mockImplementation(async (_site, request) => {
+      if (request.dimensions?.[0] !== "date") return [];
+      return [
+        {
+          keys: ["2026-08-17"],
+          clicks: 0,
+          impressions: 20,
+          ctr: 0,
+          position: 8,
+        },
+        {
+          keys: ["2026-08-15"],
+          clicks: 2,
+          impressions: 100,
+          ctr: 0.02,
+          position: 4,
+        },
+      ].filter(
+        (row) =>
+          row.keys[0] >= request.startDate && row.keys[0] <= request.endDate,
+      );
+    });
+    const result = await getSearchPerformanceReport({
+      data: { projectId: "authorized-project", dateRange: "last_28_days" },
+    });
+    expect(result).toMatchObject({
+      trend: [
+        {
+          date: "2026-08-15",
+          clicks: 2,
+          impressions: 100,
+          ctr: 0.02,
+          position: 4,
+        },
+        {
+          date: "2026-08-16",
+          clicks: null,
+          impressions: null,
+          ctr: null,
+          position: null,
+        },
+        { date: "2026-08-17", clicks: 0, impressions: 20, ctr: 0, position: 8 },
+        ...Array.from({ length: 25 }, (_, i) => ({
+          date: new Date(Date.UTC(2026, 7, 18 + i)).toISOString().slice(0, 10),
+          clicks: null,
+          impressions: null,
+          ctr: null,
+          position: null,
+        })),
+      ],
+      totals: { clicks: 2, impressions: 120 },
+    });
+    expect(mocks.query).toHaveBeenCalledTimes(4);
+  });
   it("excludes fresh nonfinal rows from totals and comparisons", async () => {
     mocks.query.mockImplementation(async (_site, request) => {
       if (request.dimensions?.[0] !== "date") return [];
@@ -193,4 +337,52 @@ describe("Search Performance report contract", () => {
       }),
     ).resolves.toEqual({ connected: false });
   });
+});
+
+describe("complete-period comparison", () => {
+  it.each([
+    ["final", null, true],
+    ["final", "2026-09-07", false],
+    ["final", "2026-09-04", false],
+    ["all", null, false],
+  ] as const)(
+    "checks both daily windows (%s, missing %s)",
+    async (dataState, missingDate, comparisonAvailable) => {
+      mocks.query.mockImplementation(async (_site, request) => {
+        if (request.dimensions?.[0] !== "date") return [];
+        const rows: GscSearchAnalyticsRow[] = [];
+        for (
+          let ms = Date.parse(request.startDate);
+          ms <= Date.parse(request.endDate);
+          ms += 86400000
+        ) {
+          const date = new Date(ms).toISOString().slice(0, 10);
+          if (date !== missingDate)
+            rows.push({
+              keys: [date],
+              clicks: 1,
+              impressions: 10,
+              ctr: 0.1,
+              position: 3,
+            });
+        }
+        return rows;
+      });
+      const report = await getSearchPerformanceReport({
+        data: {
+          projectId: "authorized-project",
+          dateRange: "last_7_days",
+          startDate: "2026-09-06",
+          endDate: "2026-09-08",
+          dataState,
+        },
+      });
+      expect(report).toMatchObject({
+        freshness: {
+          lastAvailableDate: "2026-09-08",
+          comparisonAvailable,
+        },
+      });
+    },
+  );
 });

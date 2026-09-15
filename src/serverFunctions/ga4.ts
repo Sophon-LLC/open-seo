@@ -2,6 +2,11 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { waitUntil } from "cloudflare:workers";
 import { z } from "zod";
+import {
+  reportDateFields,
+  validReportDates,
+  reportDateError,
+} from "@/types/schemas/reportDates";
 import { Ga4DashboardService } from "@/server/features/ga4/services/Ga4DashboardService";
 import { Ga4Service } from "@/server/features/ga4/services/Ga4Service";
 import { AppError } from "@/server/lib/errors";
@@ -59,11 +64,17 @@ export const getGa4Connection = createServerFn({ method: "POST" })
  *  daily sessions trend, over the default (last 28 complete days) range. */
 export const getGa4DashboardReport = createServerFn({ method: "POST" })
   .middleware(requireProjectContext)
-  .validator(projectScopedSchema)
-  .handler(async ({ context }) => {
+  .validator(
+    projectScopedSchema
+      .extend(reportDateFields)
+      .refine(validReportDates, reportDateError),
+  )
+  .handler(async ({ data, context }) => {
     try {
       return await Ga4DashboardService.getReport({
         projectId: context.projectId,
+        startDate: data.startDate,
+        endDate: data.endDate,
       });
     } catch (error) {
       // Not connected, a dead grant, or a lost/deleted property: the dashboard

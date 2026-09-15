@@ -27,6 +27,7 @@ import { closeDropdown } from "@/client/lib/dropdown";
 import { signOutAndRedirect, useSession } from "@/lib/auth-client";
 import { isHostedClientAuthMode } from "@/lib/auth-mode";
 import { BILLING_ROUTE } from "@/shared/billing";
+import { useFeatureAvailability } from "@/client/navigation/availability";
 
 interface SidebarProps {
   projectId: string | null;
@@ -82,8 +83,9 @@ function SidebarNavLink({
 }
 
 export function Sidebar({ projectId, onNavigate, onClose }: SidebarProps) {
+  const availability = useFeatureAvailability();
   const navGroups = [
-    ...(projectId ? getProjectNavGroups(projectId) : []),
+    ...(projectId ? getProjectNavGroups(projectId, availability.research) : []),
     connectNavGroup,
   ];
   const navigate = useNavigate();
@@ -152,7 +154,7 @@ export function Sidebar({ projectId, onNavigate, onClose }: SidebarProps) {
         />
       </div>
 
-      {projectId ? (
+      {projectId && availability.chat ? (
         // Same underline tab idiom as the in-page tab strips (e.g. Domain
         // Overview's Top Keywords / Top Pages).
         <div className="px-3 pb-1">
@@ -173,7 +175,7 @@ export function Sidebar({ projectId, onNavigate, onClose }: SidebarProps) {
         </div>
       ) : null}
 
-      {view === "chat" && projectId ? (
+      {availability.chat && view === "chat" && projectId ? (
         <SamSidebarPanel projectId={projectId} onNavigate={onNavigate} />
       ) : (
         <nav className="min-h-0 flex-1 overflow-y-auto px-2 py-2">

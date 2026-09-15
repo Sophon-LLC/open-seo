@@ -1,22 +1,13 @@
 import { Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
 import { Check } from "lucide-react";
-import { SearchConsoleConnectionCard } from "@/client/features/gsc/SearchConsoleConnectionCard";
 import { AUDIT_ISSUE_TYPES } from "@/shared/audit-issues";
 
-import {
-  formatCount,
-  formatCtr,
-  formatPosition,
-} from "@/client/features/search-performance/SearchPerformanceColumns";
-import { getSearchPerformanceReport } from "@/serverFunctions/searchPerformance";
 import {
   CardShell,
   EmptyCardBody,
   formatDay,
   moreDetailsClass,
   newLost,
-  PercentDelta,
   Stat,
 } from "@/client/features/dashboard/cardParts";
 import type {
@@ -29,103 +20,6 @@ import type {
 const issueTitles: Record<string, string | undefined> = Object.fromEntries(
   Object.entries(AUDIT_ISSUE_TYPES).map(([key, value]) => [key, value.title]),
 );
-
-export function GscCard({
-  projectId,
-  connected,
-}: {
-  projectId: string;
-  connected: boolean;
-}) {
-  const reportQuery = useQuery({
-    queryKey: ["dashboardGscReport", projectId],
-    queryFn: () =>
-      getSearchPerformanceReport({
-        data: { projectId, dateRange: "last_28_days" },
-      }),
-    enabled: connected,
-  });
-
-  // Not connected (or a dead grant discovered by the report call): the
-  // connection card sells and runs the whole flow itself.
-  if (!connected || (reportQuery.data && !reportQuery.data.connected)) {
-    return (
-      <div id="connect-gsc">
-        <SearchConsoleConnectionCard projectId={projectId} />
-      </div>
-    );
-  }
-
-  const report = reportQuery.data;
-
-  return (
-    <CardShell
-      title="Search performance"
-      stamp={
-        report?.connected
-          ? `Google Search Console · ${report.range.startDate} to ${report.range.endDate} · PT (America/Los_Angeles) · finalized data only · compared with ${report.range.prevStartDate} to ${report.range.prevEndDate}`
-          : "Google Search Console"
-      }
-      action={
-        <Link
-          to="/p/$projectId/search-performance"
-          params={{ projectId }}
-          className={moreDetailsClass}
-        >
-          More details
-        </Link>
-      }
-    >
-      {reportQuery.isPending ? (
-        <div className="grid grid-cols-2 gap-3" aria-busy>
-          {Array.from({ length: 4 }, (_, i) => (
-            <div key={i} className="skeleton h-20" />
-          ))}
-        </div>
-      ) : reportQuery.isError ? (
-        <p className="text-sm text-base-content/60">
-          Couldn&rsquo;t load Search Console data. Try again shortly.
-        </p>
-      ) : report?.connected ? (
-        <>
-          {report.totals.impressions === 0 ? (
-            <p className="mb-3 text-sm text-base-content/60">
-              No impressions were returned for this finalized-data window. CTR
-              and average position are undefined.
-            </p>
-          ) : null}
-          <div className="grid grid-cols-2 gap-3">
-            <Stat
-              label="Clicks"
-              value={formatCount(report.totals.clicks)}
-              sub={
-                <PercentDelta
-                  current={report.totals.clicks}
-                  previous={report.prevTotals.clicks}
-                />
-              }
-            />
-            <Stat
-              label="Impressions"
-              value={formatCount(report.totals.impressions)}
-              sub={
-                <PercentDelta
-                  current={report.totals.impressions}
-                  previous={report.prevTotals.impressions}
-                />
-              }
-            />
-            <Stat label="CTR" value={formatCtr(report.totals.ctr)} />
-            <Stat
-              label="Avg position"
-              value={formatPosition(report.totals.position)}
-            />
-          </div>
-        </>
-      ) : null}
-    </CardShell>
-  );
-}
 
 export function AuditHealthCard({
   projectId,

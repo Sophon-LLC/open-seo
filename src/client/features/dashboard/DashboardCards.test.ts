@@ -1,15 +1,22 @@
+import { GscCard } from "./GscCard";
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type * as Router from "@tanstack/react-router";
 import { describe, expect, it, vi } from "vitest";
-import { AuditHealthCard, BacklinkPulseCard, GscCard } from "./DashboardCards";
+import { AuditHealthCard, BacklinkPulseCard } from "./DashboardCards";
 import { sumSearchTotals } from "@/server/features/gsc/searchPerformanceReport";
 import { DashboardPage } from "./DashboardPage";
 
 // Keep the actual cards; replace only browser routing and server RPC boundaries.
 vi.mock("@/serverFunctions/searchPerformance", () => ({
   getSearchPerformanceReport: vi.fn(),
+  getSearchPerformanceTable: vi.fn(),
+}));
+vi.mock("@/serverFunctions/keywords", () => ({ saveKeywords: vi.fn() }));
+vi.mock("@/client/lib/posthog", () => ({ captureClientEvent: vi.fn() }));
+vi.mock("@/serverFunctions/channelReports", () => ({
+  getChannelReports: vi.fn(),
 }));
 vi.mock("@/serverFunctions/gsc", () => ({
   getGscConnection: vi.fn(),
@@ -118,6 +125,38 @@ describe("dashboard backlink state", () => {
 });
 
 describe("dashboard overview failure", () => {
+  it("omits unavailable provider cards and competitor onboarding without hiding independent audit", () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { staleTime: Infinity, retry: false } },
+    });
+    client.setQueryData(["dashboardActivation", "project-a"], {
+      domain: "example.com",
+      ga4: { connected: false, cardDismissedAt: "2026-09-10" },
+      gsc: { connected: false },
+      mcp: { authorizedAt: null, firstToolCallAt: null, cardDismissedAt: null },
+      competitorClickedAt: null,
+      hasMultipleProjects: false,
+      hasTeammate: false,
+      dismissedSteps: [],
+    });
+    client.setQueryData(["dashboardOverview", "project-a"], {
+      backlinks: null,
+      audit: null,
+    });
+    const html = renderToStaticMarkup(
+      createElement(
+        QueryClientProvider,
+        { client },
+        createElement(DashboardPage, { projectId: "project-a" }),
+      ),
+    );
+    client.clear();
+    expect(html).not.toContain("Backlink Pulse");
+    expect(html).not.toContain("No backlink snapshot");
+    expect(html).not.toContain("Explore a competitor");
+    expect(html).toContain("Indexing &amp; submissions");
+    expect(html).toContain("Last 90 days");
+  });
   it("shows unavailable state instead of setup/healthy cards when the overview fails", () => {
     const client = new QueryClient({
       defaultOptions: {
@@ -161,6 +200,37 @@ describe("dashboard overview failure", () => {
 });
 
 describe("GSC card metric meaning", () => {
+  it("does not reuse previous-period totals while a newly selected date window is loading", () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    client.setQueryData(
+      [
+        "dashboardGscReport",
+        "project-a",
+        { startDate: "2026-08-15", endDate: "2026-09-11" },
+      ],
+      {
+        connected: true,
+        totals: { clicks: 98765 },
+      },
+    );
+    const html = renderToStaticMarkup(
+      createElement(
+        QueryClientProvider,
+        { client },
+        createElement(GscCard, {
+          projectId: "project-a",
+          connected: true,
+          dates: { startDate: "2026-09-05", endDate: "2026-09-11" },
+        }),
+      ),
+    );
+    expect(html).toContain("aria-busy");
+    expect(html).not.toContain("98765");
+    expect(html).not.toContain("98,765");
+    client.clear();
+  });
   it("renders undefined rates and position as unavailable, while keeping zero counts", () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Infinity } },
@@ -193,6 +263,9 @@ describe("GSC card metric meaning", () => {
     expect(html).toContain("PT (America/Los_Angeles)");
     expect(html).toContain("finalized data only");
     expect(html).toContain("No impressions were returned");
+    expect(html.match(/daily trend/g)).toHaveLength(1);
+    expect(html).toContain('aria-label="Choose trend metric"');
+    expect(html).toContain("Search loaded rows");
   });
   it("still displays 0.0% CTR when there are impressions and zero clicks", () => {
     const client = new QueryClient({

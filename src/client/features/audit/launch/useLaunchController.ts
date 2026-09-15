@@ -1,4 +1,5 @@
 import { useForm } from "@tanstack/react-form";
+import { useFeatureAvailability } from "@/client/navigation/availability";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -47,6 +48,7 @@ export function useLaunchController({
   onAuditStarted: (auditId: string) => void;
 }) {
   const maxPagesLimit = getMaxPagesLimit(isFreePlan);
+  const availability = useFeatureAvailability();
   const historyQuery = useQuery({
     queryKey: ["audit-history", projectId],
     queryFn: () => getAuditHistory({ data: { projectId } }),
@@ -84,7 +86,8 @@ export function useLaunchController({
           projectId,
           startUrl: value.url,
           maxPages: effectiveMaxPages,
-          lighthouseStrategy: value.runLighthouse ? "auto" : "none",
+          lighthouseStrategy:
+            availability.research && value.runLighthouse ? "auto" : "none",
         });
         toast.success("Audit started!");
         onAuditStarted(result.auditId);

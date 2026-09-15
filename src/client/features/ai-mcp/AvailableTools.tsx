@@ -1,3 +1,5 @@
+import { useFeatureAvailability } from "@/client/navigation/availability";
+
 type McpTool = {
   name: string;
   title: string;
@@ -253,9 +255,25 @@ const toolCategories: ToolCategory[] = [
 ];
 
 export function AvailableTools() {
+  const availability = useFeatureAvailability();
+  const categories = toolCategories
+    .map((cat) => ({
+      ...cat,
+      tools: cat.tools.filter(
+        (tool) =>
+          availability.research ||
+          ["Project Context", "Search Console", "Google Analytics"].includes(
+            cat.label,
+          ) ||
+          ["get_rank_tracker", "list_saved_keywords", "save_keywords"].includes(
+            tool.name,
+          ),
+      ),
+    }))
+    .filter((cat) => cat.tools.length > 0);
   return (
     <div className="grid gap-x-8 gap-y-8 md:grid-cols-2">
-      {toolCategories.map((cat) => (
+      {categories.map((cat) => (
         <div key={cat.label}>
           <h3 className="text-xs font-semibold uppercase tracking-wide text-base-content/50">
             {cat.label}
