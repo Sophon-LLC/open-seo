@@ -58,6 +58,20 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("GA4 dashboard report", () => {
+  it("forwards the selected dates through the real GA4 overview request builder", async () => {
+    mocks.runReport.mockResolvedValue({});
+    const report = await Ga4DashboardService.getReport({
+      projectId: "p1",
+      startDate: "2026-09-02",
+      endDate: "2026-09-08",
+    });
+    expect(report.request).toMatchObject({
+      resolvedDateRange: { startDate: "2026-09-02", endDate: "2026-09-08" },
+      previousDateRange: { startDate: "2026-08-26", endDate: "2026-09-01" },
+    });
+    expect(report.trend).toHaveLength(7);
+    expect(mocks.runReport).toHaveBeenCalledTimes(3);
+  });
   it("preserves property, actual dates and provider quality limitations", async () => {
     mocks.runReport
       .mockResolvedValueOnce(

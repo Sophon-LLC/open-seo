@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  reportDateFields,
+  validReportDates,
+  reportDateError,
+} from "./reportDates";
 
 /** Date ranges offered by the Search Performance page. A deliberate subset of
  *  the GSC agent ranges (GSC_DATE_RANGES in searchAnalytics.ts); assignability
@@ -19,6 +24,8 @@ export type SearchPerformanceDevice = (typeof GSC_DEVICES)[number];
 // Shared report/table filters. Spread into each request schema so the overview
 // and the paginated table calls always accept the exact same filter surface.
 const searchPerformanceFilterShape = {
+  ...reportDateFields,
+  dataState: z.enum(["all", "final"]).default("final"),
   projectId: z.string().min(1),
   dateRange: z.enum(SEARCH_PERFORMANCE_RANGES).default("last_28_days"),
   device: z.enum(GSC_DEVICES).optional(),
@@ -30,9 +37,9 @@ const searchPerformanceFilterShape = {
     .optional(),
 };
 
-export const searchPerformanceInputSchema = z.object(
-  searchPerformanceFilterShape,
-);
+export const searchPerformanceInputSchema = z
+  .object(searchPerformanceFilterShape)
+  .refine(validReportDates, reportDateError);
 
 /** The dimensions that get their own paginated table (query + page). Striking
  *  distance is computed from the overview call and never paginates. */
@@ -43,21 +50,25 @@ export type SearchPerformanceTableDimension =
 export const SEARCH_PERFORMANCE_PAGE_SIZES = [25, 50, 100] as const;
 export const SEARCH_PERFORMANCE_DEFAULT_PAGE_SIZE = 25;
 
-export const searchPerformanceTableInputSchema = z.object({
-  ...searchPerformanceFilterShape,
-  dimension: z.enum(SEARCH_PERFORMANCE_TABLE_DIMENSIONS),
-  page: z.number().int().positive().default(1),
-  pageSize: z
-    .number()
-    .int()
-    .refine((value) =>
-      (SEARCH_PERFORMANCE_PAGE_SIZES as readonly number[]).includes(value),
-    )
-    .default(SEARCH_PERFORMANCE_DEFAULT_PAGE_SIZE),
-});
+export const searchPerformanceTableInputSchema = z
+  .object({
+    ...searchPerformanceFilterShape,
+    dimension: z.enum(SEARCH_PERFORMANCE_TABLE_DIMENSIONS),
+    page: z.number().int().positive().default(1),
+    pageSize: z
+      .number()
+      .int()
+      .refine((value) =>
+        (SEARCH_PERFORMANCE_PAGE_SIZES as readonly number[]).includes(value),
+      )
+      .default(SEARCH_PERFORMANCE_DEFAULT_PAGE_SIZE),
+  })
+  .refine(validReportDates, reportDateError);
 
 /** Export pulls the full dataset (capped) rather than a single page. */
-export const searchPerformanceTableExportInputSchema = z.object({
-  ...searchPerformanceFilterShape,
-  dimension: z.enum(SEARCH_PERFORMANCE_TABLE_DIMENSIONS),
-});
+export const searchPerformanceTableExportInputSchema = z
+  .object({
+    ...searchPerformanceFilterShape,
+    dimension: z.enum(SEARCH_PERFORMANCE_TABLE_DIMENSIONS),
+  })
+  .refine(validReportDates, reportDateError);

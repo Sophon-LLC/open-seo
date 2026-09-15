@@ -57,6 +57,37 @@ export function sumSearchTotals(
   };
 }
 
+/** Missing provider dates are gaps, not measured zero-traffic days. */
+export function buildSearchTrend(
+  rows: GscSearchAnalyticsRow[],
+  startDate: string,
+  endDate: string,
+) {
+  const byDate = new Map(rows.map((row) => [row.keys?.[0], row]));
+  const trend: {
+    date: string;
+    clicks: number | null;
+    impressions: number | null;
+    ctr: number | null;
+    position: number | null;
+  }[] = [];
+  for (
+    let ms = Date.parse(`${startDate}T00:00:00Z`);
+    ms <= Date.parse(`${endDate}T00:00:00Z`);
+    ms += 86400000
+  ) {
+    const date = formatUtcDate(ms);
+    const row = byDate.get(date);
+    trend.push({
+      date,
+      ...(row
+        ? sumSearchTotals([row])
+        : { clicks: null, impressions: null, ctr: null, position: null }),
+    });
+  }
+  return trend;
+}
+
 /** Flatten single-dimension rows (query or page) into a keyed table row. */
 export function toDimensionRows(
   rows: GscSearchAnalyticsRow[],

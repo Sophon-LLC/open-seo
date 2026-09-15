@@ -18,6 +18,12 @@ afterEach(() => vi.unstubAllGlobals());
 
 const strikingReport: Report = {
   connected: true,
+  freshness: {
+    dataState: "final",
+    lastAvailableDate: null,
+    comparisonAvailable: false,
+  },
+  trend: [],
   range: {
     startDate: "2026-08-15",
     endDate: "2026-09-11",
@@ -197,6 +203,12 @@ describe("Search Performance totals", () => {
       createElement(TotalsCards, {
         report: {
           connected: true,
+          freshness: {
+            dataState: "final",
+            lastAvailableDate: null,
+            comparisonAvailable: false,
+          },
+          trend: [],
           range: {
             startDate: "2026-08-15",
             endDate: "2026-09-11",

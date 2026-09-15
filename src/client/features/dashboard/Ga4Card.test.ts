@@ -192,6 +192,7 @@ describe("GA4 dashboard card", () => {
       expect(html).toContain(value);
     }
     expect(html).toContain("▲ 100%");
+    expect(html).toContain("View daily values");
     expect(html).not.toContain("Data quality limitations");
   });
 

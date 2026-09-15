@@ -1,13 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import {
-  Area,
-  AreaChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { DailyTrend } from "./DailyTrend";
+import type { ReportDates } from "@/types/schemas/reportDates";
 import {
   CardShell,
   moreDetailsClass,
@@ -62,16 +56,6 @@ function qualityNotices(report: Ga4DashboardReport): string[] {
   return notices;
 }
 
-function formatTrendDay(date: string): string {
-  // Construct in local time: Date.parse("2026-08-01") is UTC midnight, which
-  // toLocaleDateString would render as the previous day west of Greenwich.
-  const [year, month, day] = date.split("-").map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-}
-
 function statValue(
   value: number | null,
   format: (value: number) => string,
@@ -89,40 +73,20 @@ function statDelta(
   ) : undefined;
 }
 
-function SessionsTooltip({
-  active,
-  payload,
-  label,
-}: {
-  active?: boolean;
-  payload?: Array<{ value: number | null }>;
-  label?: string;
-}) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="rounded-md border border-base-300 bg-base-100 px-3 py-2 shadow-sm">
-      <p className="text-xs text-base-content/60">
-        {label ? formatTrendDay(label) : ""}
-      </p>
-      <p className="text-sm font-medium tabular-nums">
-        {payload[0].value === null
-          ? "Session count unavailable"
-          : `${formatCount(payload[0].value)} sessions`}
-      </p>
-    </div>
-  );
-}
-
 export function Ga4Card({
   projectId,
   connected,
+  dates,
 }: {
   projectId: string;
   connected: boolean;
+  dates?: ReportDates;
 }) {
   const reportQuery = useQuery({
-    queryKey: ["dashboardGa4Report", projectId],
-    queryFn: () => getGa4DashboardReport({ data: { projectId } }),
+    queryKey: dates
+      ? ["dashboardGa4Report", projectId, dates]
+      : ["dashboardGa4Report", projectId],
+    queryFn: () => getGa4DashboardReport({ data: { projectId, ...dates } }),
     enabled: connected,
   });
 
@@ -162,7 +126,7 @@ export function Ga4Card({
     >
       {reportQuery.isPending ? (
         <div className="space-y-3" aria-busy>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {Array.from({ length: 4 }, (_, i) => (
               <div key={i} className="skeleton h-16" />
             ))}
@@ -175,7 +139,10 @@ export function Ga4Card({
         </p>
       ) : report?.connected ? (
         <div className="space-y-4">
-          <div className="space-y-1 text-xs text-base-content/60 break-words">
+          <details className="space-y-1 text-xs text-base-content/60 break-words">
+            <summary className="cursor-pointer py-1">
+              Property & source details
+            </summary>
             <p className="font-medium text-base-content">
               {report.source.propertyDisplayName || "Google Analytics property"}
               {" · "}
@@ -195,7 +162,7 @@ export function Ga4Card({
                 ? `Currency: ${report.request.currencyCode}`
                 : "Currency not reported"}
             </p>
-          </div>
+          </details>
           {!report.currentRowReturned ? (
             <p className="text-sm text-base-content/60">
               GA4 returned no rows for this period. Traffic totals are unknown,
@@ -230,7 +197,7 @@ export function Ga4Card({
               ) : null}
             </div>
           ) : null}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Stat
               label="Sessions"
               value={statValue(report.totals.sessions, formatCount)}
@@ -263,31 +230,18 @@ export function Ga4Card({
               )}
             />
           </div>
+          <p className="text-xs text-base-content/60">
+            Purchase attribution is not available in this view. Key events are
+            not necessarily purchases.
+          </p>
           {report.trend.some((day) => day.sessions !== null) ? (
-            <div className="h-24">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                  data={report.trend}
-                  margin={{ top: 4, right: 0, bottom: 0, left: 0 }}
-                >
-                  <XAxis dataKey="date" hide />
-                  <YAxis hide domain={[0, "auto"]} />
-                  <Tooltip
-                    content={<SessionsTooltip />}
-                    cursor={{ stroke: "currentColor", strokeOpacity: 0.2 }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="sessions"
-                    stroke="var(--color-primary)"
-                    strokeWidth={2}
-                    fill="var(--color-primary)"
-                    fillOpacity={0.08}
-                    connectNulls={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+            <DailyTrend
+              label="Organic sessions"
+              rows={report.trend.map((day) => ({
+                date: day.date,
+                value: day.sessions,
+              }))}
+            />
           ) : (
             <p className="text-xs text-base-content/60">
               No daily session values were returned.
