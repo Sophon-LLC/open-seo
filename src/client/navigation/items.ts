@@ -93,7 +93,10 @@ function getProjectNavItems(projectId: string) {
 
 // Grouped by scope: "My Site" is the project's own domain (tracked data),
 // "Research" is point-at-anything lookup tools.
-export function getProjectNavGroups(projectId: string) {
+export function getProjectNavGroups(
+  projectId: string,
+  researchAvailable = false,
+) {
   const all = getProjectNavItems(projectId);
   const byPath = (path: (typeof projectNavItems)[number]["to"]) =>
     all.find((i) => i.to === path)!;
@@ -122,8 +125,24 @@ export function getProjectNavGroups(projectId: string) {
         byPath("/p/$projectId/audit"),
       ],
     },
-  ];
+  ]
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) => researchAvailable || !researchPaths.includes(item.to),
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
 }
+
+export const researchPaths: readonly string[] = [
+  "/p/$projectId/keywords",
+  "/p/$projectId/domain",
+  "/p/$projectId/backlinks",
+  "/p/$projectId/brand-lookup",
+  "/p/$projectId/prompt-explorer",
+  "/p/$projectId/rank-tracking",
+];
 
 export const dataforseoHelpLinkOptions = linkOptions({
   to: "/help/dataforseo-api-key",

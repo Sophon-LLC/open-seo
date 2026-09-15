@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { useFeatureAvailability } from "@/client/navigation/availability";
 import { Loader2 } from "lucide-react";
 import { MIN_PAGES } from "@/client/features/audit/launch/types";
 import type { useLaunchController } from "@/client/features/audit/launch/useLaunchController";
@@ -17,6 +18,7 @@ export function LaunchFormCard({
   launchForm,
   maxPagesLimit,
 }: Props) {
+  const availability = useFeatureAvailability();
   return (
     <div className="card bg-base-100 border border-base-300">
       <div className="card-body gap-4">
@@ -76,7 +78,9 @@ export function LaunchFormCard({
               commitMaxPagesInput={commitMaxPagesInput}
               maxPagesLimit={maxPagesLimit}
             />
-            <LighthouseOptions launchForm={launchForm} />
+            {availability.research && (
+              <LighthouseOptions launchForm={launchForm} />
+            )}
           </div>
         </form>
 

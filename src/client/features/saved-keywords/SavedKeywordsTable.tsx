@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-table";
 import { Search } from "lucide-react";
 import { useMemo } from "react";
+import { useFeatureAvailability } from "@/client/navigation/availability";
 import {
   AppDataTable,
   makeSelectionColumn,
@@ -190,13 +191,16 @@ function SavedKeywordsEmptyState({
 }: {
   hasActiveFilters: boolean;
 }) {
+  const availability = useFeatureAvailability();
   return (
     <div className="py-12 text-center text-sm text-base-content/55">
       <Search className="mx-auto mb-2 size-8 opacity-40" />
       <p>
         {hasActiveFilters
           ? "No saved keywords match the current filters."
-          : "No saved keywords yet. Use the Keyword Research page to find and save keywords."}
+          : availability.research
+            ? "No saved keywords yet. Use the Keyword Research page to find and save keywords."
+            : "No saved keywords yet. Provider research is not available in this workspace."}
       </p>
     </div>
   );

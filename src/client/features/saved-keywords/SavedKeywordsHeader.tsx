@@ -1,3 +1,4 @@
+import { useFeatureAvailability } from "@/client/navigation/availability";
 import {
   ChevronDown,
   Download,
@@ -23,6 +24,7 @@ export function SavedKeywordsHeader({
   onRefreshMetrics: () => void;
 }) {
   const disabled = totalCount === 0 || exporting != null;
+  const availability = useFeatureAvailability();
 
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -35,42 +37,44 @@ export function SavedKeywordsHeader({
       </div>
 
       <div className="flex items-center gap-2">
-        <div className="dropdown dropdown-end">
-          <button
-            type="button"
-            tabIndex={0}
-            disabled={disabled || metricsRefreshing}
-            aria-haspopup="menu"
-            className={`btn btn-ghost btn-sm gap-1.5 ${disabled || metricsRefreshing ? "btn-disabled" : ""}`}
-          >
-            <RefreshCw
-              className={`size-4 ${metricsRefreshing ? "animate-spin" : ""}`}
-            />
-            {metricsRefreshing ? "Updating..." : "Actions"}
-            <ChevronDown className="size-3 opacity-60" />
-          </button>
-          <ul
-            tabIndex={0}
-            role="menu"
-            className="dropdown-content menu z-10 w-64 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
-          >
-            <li>
-              <button
-                type="button"
-                onClick={onRefreshMetrics}
-                disabled={disabled || metricsRefreshing}
-              >
-                <RefreshCw className="size-4" />
-                <span className="flex flex-col items-start">
-                  <span>Update keyword stats</span>
-                  <span className="text-xs text-base-content/50">
-                    Volume, difficulty &amp; CPC
+        {availability.research && (
+          <div className="dropdown dropdown-end">
+            <button
+              type="button"
+              tabIndex={0}
+              disabled={disabled || metricsRefreshing}
+              aria-haspopup="menu"
+              className={`btn btn-ghost btn-sm gap-1.5 ${disabled || metricsRefreshing ? "btn-disabled" : ""}`}
+            >
+              <RefreshCw
+                className={`size-4 ${metricsRefreshing ? "animate-spin" : ""}`}
+              />
+              {metricsRefreshing ? "Updating..." : "Actions"}
+              <ChevronDown className="size-3 opacity-60" />
+            </button>
+            <ul
+              tabIndex={0}
+              role="menu"
+              className="dropdown-content menu z-10 w-64 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
+            >
+              <li>
+                <button
+                  type="button"
+                  onClick={onRefreshMetrics}
+                  disabled={disabled || metricsRefreshing}
+                >
+                  <RefreshCw className="size-4" />
+                  <span className="flex flex-col items-start">
+                    <span>Update keyword stats</span>
+                    <span className="text-xs text-base-content/50">
+                      Volume, difficulty &amp; CPC
+                    </span>
                   </span>
-                </span>
-              </button>
-            </li>
-          </ul>
-        </div>
+                </button>
+              </li>
+            </ul>
+          </div>
+        )}
 
         <div className="dropdown dropdown-end">
           <button
