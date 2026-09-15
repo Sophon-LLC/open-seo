@@ -81,6 +81,7 @@ export const {
   projectActivationState,
   dashboardStepDismissals,
   backlinkSnapshots,
+  channelReports,
   projectContextSections,
   projectCompetitors,
   projectKeyPages,

@@ -4,6 +4,7 @@ FROM ghcr.io/every-app/open-seo:v0.1.8@sha256:79f19fb7100e71133effa43898a2ba1ad4
 
 WORKDIR /app
 COPY src/ ./src/
+COPY drizzle/ ./drizzle/
 
 # The inherited entrypoint builds on first start. Credentials and the database
 # are runtime-only inputs supplied by the loopback-only pilot compose file.

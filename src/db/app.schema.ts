@@ -81,6 +81,31 @@ export const projects = sqliteTable(
 );
 
 // User-saved keywords within a project. This is the canonical saved list.
+export const channelReports = sqliteTable(
+  "channel_reports",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    channel: text("channel").notNull(),
+    itemKey: text("item_key").notNull(),
+    label: text("label").notNull(),
+    status: text("status").notNull(),
+    count: integer("count"),
+    source: text("source").notNull(),
+    observedAt: text("observed_at").notNull(),
+    sourceUpdatedAt: text("source_updated_at"),
+    importedAt: text("imported_at").notNull(),
+    periodStart: text("period_start"),
+    periodEnd: text("period_end"),
+    scope: text("scope"),
+    configuration: text("configuration"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.channel, table.itemKey] }),
+  ],
+);
+
 export const savedKeywords = sqliteTable(
   "saved_keywords",
   {
